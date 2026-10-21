@@ -1,0 +1,78 @@
+{
+  "title": "Thị trấn AI agent",
+  "subtitle": "Đội marketing mini",
+  "port": 4545,
+  "taskPrefix": "HY",
+  "approvalHoldSeconds": 60,
+  "boss": {
+    "id": "dieu-phoi",
+    "name": "Điều phối",
+    "role": "Claude Code chính: nhận yêu cầu, chia việc, giao cho các phòng",
+    "color": "#f2b134"
+  },
+  "agents": [
+    {
+      "id": "nghien-cuu",
+      "name": "Nghiên cứu",
+      "role": "Tìm hiểu đối thủ, xu hướng và bình luận của khách",
+      "color": "#5b8def",
+      "roof": "#2f5fbf",
+      "skills": ["/research-competitors", "/research-comments"],
+      "files": ["BOARD.md", "PAIN_BOARD.md"]
+    },
+    {
+      "id": "viet-bai",
+      "name": "Viết bài",
+      "role": "Viết kịch bản, bài đăng, tiêu đề",
+      "color": "#e8668b",
+      "roof": "#b33c62",
+      "skills": ["/topic-blueprint", "/write-script"],
+      "files": ["BOARD.md"]
+    },
+    {
+      "id": "thiet-ke",
+      "name": "Thiết kế",
+      "role": "Lên ý tưởng hình ảnh, ảnh bìa, bố cục",
+      "color": "#9b6bdf",
+      "roof": "#6c3fb0",
+      "skills": ["/design-brief"],
+      "files": ["BOARD.md"]
+    },
+    {
+      "id": "dang-bai",
+      "name": "Đăng bài",
+      "role": "Lên lịch và đăng nội dung đã duyệt",
+      "color": "#3fb68b",
+      "roof": "#22845f",
+      "skills": ["/schedule-post"],
+      "files": ["BOARD.md"]
+    },
+    {
+      "id": "so-lieu",
+      "name": "Đo số liệu",
+      "role": "Theo dõi lượt xem, tương tác, báo cáo",
+      "color": "#f08c3c",
+      "roof": "#c0611a",
+      "skills": ["/weekly-report"],
+      "files": ["BOARD.md"]
+    },
+    {
+      "id": "tra-loi",
+      "name": "Trả lời comment",
+      "role": "Soạn câu trả lời cho bình luận và tin nhắn",
+      "color": "#3cb9d6",
+      "roof": "#1d88a3",
+      "skills": ["/reply-comments"],
+      "files": ["PAIN_BOARD.md"]
+    },
+    {
+      "id": "qa",
+      "name": "QA-QC",
+      "role": "Kiểm tra chất lượng trước khi gửi bạn duyệt",
+      "color": "#d64545",
+      "roof": "#a12424",
+      "skills": ["/qa-check"],
+      "files": ["BOARD.md"]
+    }
+  ]
+}

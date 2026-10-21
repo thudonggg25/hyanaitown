@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Thị trấn AI agent</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ctext y=%22.9em%22 font-size=%2290%22%3E%F0%9F%8F%A1%3C/text%3E%3C/svg%3E">
+  <link rel="stylesheet" href="style.css">
+  <script type="importmap">
+    { "imports": { "three": "./vendor/three.module.js" } }
+  </script>
+</head>
+<body>
+  <div id="scene"></div>
+
+  <header id="topbar">
+    <div class="brand">
+      <div class="title" id="title">Thị trấn AI agent</div>
+      <div class="sub"><span id="conn" class="dot off"></span><span id="subtitle">Đang kết nối…</span></div>
+    </div>
+    <nav class="tools">
+      <button data-act="rotate" class="on" title="Bật/tắt xoay camera">Dừng xoay</button>
+      <button data-act="names" class="on">Tên</button>
+      <button data-act="bubbles" class="on">Bong bóng</button>
+      <button data-act="home">Toàn cảnh</button>
+      <button data-act="overview" class="on">Tổng quan</button>
+      <button data-act="log" class="on">Nhật ký</button>
+      <button data-act="demo" id="btn-demo">Tự chạy</button>
+      <button data-act="approve1" class="primary" id="btn-approve1">1 bước duyệt</button>
+    </nav>
+  </header>
+
+  <aside id="overview" class="panel">
+    <h2>Tổng quan</h2>
+    <div class="stats">
+      <div class="stat"><b id="s-running">0</b><span>Đang chạy</span></div>
+      <div class="stat"><b id="s-queued">0</b><span>Sắp làm</span></div>
+      <div class="stat warn"><b id="s-waiting">0</b><span>Chờ duyệt</span></div>
+      <div class="stat bad"><b id="s-error">0</b><span>Lỗi</span></div>
+    </div>
+    <h3>Chờ bạn duyệt</h3>
+    <ul id="approvals" class="list"></ul>
+    <h3>Bảng việc</h3>
+    <ul id="board" class="list compact"></ul>
+  </aside>
+
+  <aside id="log" class="panel">
+    <h2>Nhật ký việc</h2>
+    <div id="logbody"></div>
+  </aside>
+
+  <aside id="detail" class="panel hidden">
+    <button class="close" id="detail-close" aria-label="Đóng">×</button>
+    <div id="detailbody"></div>
+  </aside>
+
+  <footer id="credits">Thị trấn AI agent · vẽ bằng three.js · nhà và nhân vật dựng tạm bằng khối, có thể thay mô hình Kenney/KayKit (CC0)</footer>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
