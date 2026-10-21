@@ -20,6 +20,7 @@ function render() {
   $('#set-music-vol').value = Math.round(st.music * 100);
   $('#set-shuffle').checked = st.shuffle;
   for (const r of document.querySelectorAll('[name=set-src]')) r.checked = r.value === st.musicSource;
+  for (const r of document.querySelectorAll('#settings input[type=range]')) r.style.setProperty('--v', r.value + '%');
 
   $('#set-events').innerHTML = Object.entries(sound.EVENTS).map(([k, e]) => {
     const c = st.events[k];
@@ -103,6 +104,6 @@ export function initSettings() {
 
 export function toggleSettings(show) {
   const open = show ?? $('#settings-wrap').classList.contains('hidden');
+  document.body.classList.toggle('modal-open', open);
   $('#settings-wrap').classList.toggle('hidden', !open);
-  document.querySelector('[data-act=sound]')?.classList.toggle('on', open);
 }

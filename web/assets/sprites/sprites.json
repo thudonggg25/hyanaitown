@@ -63,7 +63,8 @@
    },
    "sleep": {
     "file": "nv/calm-ngu.webp"
-   }
+   },
+   "face": "nv/calm-mat.webp"
   },
   "anicca": {
    "file": "nv/anicca.webp",
@@ -86,7 +87,8 @@
    },
    "sleep": {
     "file": "nv/anicca-ngu.webp"
-   }
+   },
+   "face": "nv/anicca-mat.webp"
   },
   "coder": {
    "file": "nv/coder.webp",
@@ -109,7 +111,8 @@
    },
    "sleep": {
     "file": "nv/coder-ngu.webp"
-   }
+   },
+   "face": "nv/coder-mat.webp"
   },
   "coder-b": {
    "file": "nv/coder-b.webp",
@@ -132,7 +135,8 @@
    },
    "sleep": {
     "file": "nv/coder-ngu.webp"
-   }
+   },
+   "face": "nv/coder-b-mat.webp"
   },
   "thiet-ke": {
    "file": "nv/thiet-ke.webp",
@@ -155,7 +159,8 @@
    },
    "sleep": {
     "file": "nv/thiet-ke-ngu.webp"
-   }
+   },
+   "face": "nv/thiet-ke-mat.webp"
   },
   "san-pham": {
    "file": "nv/san-pham.webp",
@@ -178,7 +183,8 @@
    },
    "sleep": {
     "file": "nv/san-pham-ngu.webp"
-   }
+   },
+   "face": "nv/san-pham-mat.webp"
   },
   "tiep-nhan": {
    "file": "nv/tiep-nhan.webp",
@@ -201,7 +207,8 @@
    },
    "sleep": {
     "file": "nv/tiep-nhan-ngu.webp"
-   }
+   },
+   "face": "nv/tiep-nhan-mat.webp"
   },
   "qa": {
    "file": "nv/qa.webp",
@@ -224,7 +231,8 @@
    },
    "sleep": {
     "file": "nv/qa-ngu.webp"
-   }
+   },
+   "face": "nv/qa-mat.webp"
   },
   "khach": {
    "file": "nv/khach.webp",
@@ -247,7 +255,8 @@
    },
    "sleep": {
     "file": "nv/tiep-nhan-ngu.webp"
-   }
+   },
+   "face": "nv/khach-mat.webp"
   }
  }
 }

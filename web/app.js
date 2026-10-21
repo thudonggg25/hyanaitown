@@ -482,7 +482,7 @@ function announce(s) {
   };
   for (const e of fresh) {
     const who = nameOf(e.agent);
-    if (e.kind === 'error') fire('error', who, e.text);
+    if (e.kind === 'error') { fire('error', who, e.text); showErr(who, e.text); }
     else if (e.kind === 'done') fire('done', who, /^Xong /.test(e.text) ? e.text : null);
     else if (e.kind === 'handoff') fire('handoff', who, e.text);
     else if (e.kind === 'start') fire('notify', who, e.text);
@@ -494,19 +494,36 @@ function announce(s) {
   if (more && snd !== 'alert' && sound.settings.events.alert.sound) snd = 'alert';
   if (snd) sound.play(snd);
 }
-const TOAST_ICON = { alert: 'bell', error: 'error', done: 'ok', ok: 'ok', handoff: 'mail', notify: 'play', info: 'mail', calm: 'mail' };
+const TOAST_ICON = { alert: 'bell', error: 'warn', done: 'ok', ok: 'ok', handoff: 'mail', notify: 'play', info: 'mail', calm: 'mail', choice: 'bell' };
+const TOAST_TITLE = { alert: 'Cần bạn duyệt', error: 'Có lỗi', done: 'Xong việc', ok: 'Đã được duyệt', handoff: 'Bàn giao', notify: 'Việc mới', calm: 'Calm trả lời' };
 function toast(kind, who, text, onClick) {
   const box = $('#toasts');
   const el = document.createElement('div');
   el.className = 'toast ' + kind;
-  el.innerHTML = `<img class="ic" src="${UI}icon-${TOAST_ICON[kind] || 'mail'}.webp" alt=""><div><b>${esc(who)}</b><div>${esc(text)}</div></div>`;
-  el.onclick = () => { el.remove(); onClick?.(); };
+  const title = TOAST_TITLE[kind] ? `${TOAST_TITLE[kind]} · ${who}` : who;
+  el.innerHTML = `<img class="ic" src="${UI}icon-${TOAST_ICON[kind] || 'mail'}.webp" alt=""><div><b>${esc(title)}</b><div class="tx">${esc(text)}</div></div><span class="x">×</span>`;
+  el.onclick = e => { el.remove(); if (!e.target.classList.contains('x')) onClick?.(); };
   box.prepend(el);
-  while (box.children.length > 4) box.lastChild.remove();
-  setTimeout(() => { el.classList.add('out'); setTimeout(() => el.remove(), 400); }, kind === 'alert' ? 9000 : 5000);
+  while (box.children.length > 3) box.lastChild.remove();
+  setTimeout(() => { el.classList.add('out'); setTimeout(() => el.remove(), 400); }, kind === 'alert' ? 9000 : 6000);
+}
+// Hộp lỗi: ở lại tới khi bạn bấm; có nút nhờ Calm xem và làm lại
+function showErr(who, text) {
+  const box = $('#errbox');
+  box.innerHTML = `<button class="x" aria-label="Đóng">×</button>
+    <div class="eh"><img src="${UI}icon-warn.webp" alt=""><div><b>${esc(who)} gặp lỗi</b><div class="tx">${esc(text)}</div></div></div>
+    <div class="row"><button class="later">Để sau</button><button class="retry">Nhờ Calm xử lý</button></div>`;
+  box.classList.remove('hidden');
+  box.querySelector('.x').onclick = box.querySelector('.later').onclick = () => box.classList.add('hidden');
+  box.querySelector('.retry').onclick = () => {
+    box.classList.add('hidden');
+    post('/api/chat/send', { text: `Có lỗi trong thị trấn: ${who}: "${text}". Bạn xem nguyên nhân rồi làm lại giúp mình, xong báo mình kết quả.` });
+    openRoom();
+  };
 }
 
 const nameOf = id => state?.agents.find(a => a.id === id)?.name || id;
+const colorOf = id => state?.agents.find(a => a.id === id)?.color || '#c9b79c';
 const statusText = { running: 'Đang chạy', queued: 'Sắp làm', waiting_approval: 'Chờ duyệt', approved: 'Đã duyệt', rejected: 'Bị trả lại', done: 'Xong', error: 'Lỗi' };
 const hhmm = ts => new Date(ts).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
 
@@ -519,16 +536,18 @@ function renderOverview(s) {
 
   const items = [
     ...s.approvals.map(q => ({ id: q.id, title: q.summary, who: q.agent, kind: 'Xin quyền dùng ' + q.tool, ts: q.ts })),
-    ...s.board.filter(t => t.status === 'waiting_approval').map(t => ({ id: t.id, title: `${t.id}: ${t.title}`, who: t.agent, kind: 'Việc chờ duyệt', ts: t.updatedAt })),
+    ...s.board.filter(t => t.status === 'waiting_approval').map(t => ({ id: t.id, task: true, title: t.title, who: t.agent, kind: 'Cần bạn duyệt', ts: t.updatedAt })),
   ];
   $('#approvals').innerHTML = items.length ? items.map(i => `
-    <li><div class="${i.kind === 'Việc chờ duyệt' ? 'link' : ''}"${i.kind === 'Việc chờ duyệt' ? ` data-task="${esc(i.id)}"` : ''}>${esc(i.title)}</div>
+    <li><div class="${i.task ? 'link' : ''}"${i.task ? ` data-task="${esc(i.id)}"` : ''}>
+        <div class="ap-id">${esc(i.task ? i.id : 'Xin quyền')}</div><div class="ap-title">${esc(i.title)}</div></div>
       <div class="meta">${esc(nameOf(i.who))} · ${esc(i.kind)} · ${hhmm(i.ts)}</div>
-      <div class="row"><button class="ok" data-decide="${esc(i.id)}" data-ok="1">Duyệt</button>
-      <button class="no" data-decide="${esc(i.id)}" data-ok="0">Từ chối</button></div></li>`).join('')
+      <div class="row"><button class="btn-ok" data-decide="${esc(i.id)}" data-ok="1">Duyệt</button>
+      <button class="btn-no" data-decide="${esc(i.id)}" data-ok="0">Từ chối</button></div></li>`).join('')
     : '<li class="empty">Không có gì chờ duyệt.</li>';
 
   const list = [...s.board].reverse().slice(0, 30);
+  $('#board-count').textContent = list.length ? `${list.length} việc gần đây` : '';
   $('#board').innerHTML = list.length ? list.map(t => `
     <li class="link" data-task="${esc(t.id)}"><span class="tid">${esc(t.id)}</span><span class="ttl" title="${esc(t.title)}">${esc(t.title)}</span>
       <span class="tag ${t.status}">${statusText[t.status] || t.status}</span></li>`).join('')
@@ -541,7 +560,7 @@ function renderLog(log) {
     const d = new Date(e.ts).toLocaleDateString('vi-VN', { weekday: 'long', day: '2-digit', month: '2-digit' });
     if (d !== day) { html += `<div class="day">${esc(d)}</div>`; day = d; }
     const tid = (e.text.match(/\b[A-Z]{2,5}-\d{3,}\b/) || [])[0];
-    html += `<div class="e ${esc(e.kind)}${tid ? ' link' : ''}"${tid ? ` data-task="${tid}"` : ''}><time>${hhmm(e.ts)}</time><span class="who">${esc(nameOf(e.agent))}</span><span class="txt">${esc(e.text)}</span></div>`;
+    html += `<div class="e ${esc(e.kind)}${tid ? ' link' : ''}"${tid ? ` data-task="${tid}"` : ''}><i class="d" style="background:${esc(colorOf(e.agent))}"></i><time>${hhmm(e.ts)}</time><span class="who">${esc(nameOf(e.agent))}</span><span class="txt">${esc(e.text)}</span></div>`;
   }
   $('#logbody').innerHTML = html || '<div class="empty">Chưa có nhật ký.</div>';
 }
@@ -550,20 +569,28 @@ const stateText = { idle: 'Rảnh', working: 'Đang làm', waiting: 'Chờ bạn
 function renderDetail(id) {
   const a = state?.agents.find(x => x.id === id);
   if (!a) return;
-  const tasks = state.board.filter(t => t.agent === id).slice(-5).reverse();
+  const tasks = state.board.filter(t => t.agent === id).slice(-4).reverse();
+  const cur = a.task && state.board.find(t => t.id === a.task);
+  const face = meta?.chars[charFor(a)]?.face;
+  const busy = a.state === 'working' || cur?.status === 'running';
   $('#detailbody').innerHTML = `
-    <div class="head"><div class="swatch" style="background:${esc(a.color)}"></div>
-      <div><div class="name">${esc(a.name)}</div><div class="role">${esc(a.role)}</div></div></div>
-    <h3>Đang làm</h3>
-    <div class="now"><b>${stateText[a.state] || a.state}</b>${a.task ? ' · ' + esc(a.task) : ''}<br>${esc(a.bubble)}</div>
-    <h3>Việc gần đây</h3>
-    ${tasks.length ? '<ul>' + tasks.map(t => `<li class="link" data-task="${esc(t.id)}">${esc(t.id)}: ${esc(t.title)} <span class="tag ${t.status}">${statusText[t.status] || t.status}</span></li>`).join('') + '</ul>' : '<div class="empty">Chưa có.</div>'}
-    <h3>Thao tác vừa rồi</h3>
-    ${a.tools.length ? '<ul>' + a.tools.slice(0, 6).map(t => `<li>${hhmm(t.ts)} ${esc(t.text)}</li>`).join('') + '</ul>' : '<div class="empty">Chưa có.</div>'}
-    <h3>File dùng</h3>
-    <div class="chips">${a.files.map(f => `<span class="chip">${esc(f)}</span>`).join('') || '<span class="empty">Chưa có.</span>'}</div>
-    <h3>Kỹ năng</h3>
-    <div class="chips">${a.skills.map(f => `<span class="chip">${esc(f)}</span>`).join('') || '<span class="empty">Chưa có.</span>'}</div>`;
+    <div class="ag-head">
+      <div class="ag-face">${face ? `<img src="${SPR + face}" alt="">` : ''}</div>
+      <div>
+        <div class="ag-name">${esc(a.name)}</div>
+        <div class="ag-role">${esc(a.role)}</div>
+        <span class="st-pill ${esc(a.state)}">${stateText[a.state] || a.state}</span>
+        <div class="ag-task" style="margin-top:8px">${cur ? `<span class="tid link" data-task="${esc(cur.id)}">${esc(cur.id)}</span> · ${esc(cur.title)}` : esc(a.bubble || 'Chưa có việc')}</div>
+        ${cur ? `<div class="progress"><div class="bar${busy ? ' busy' : ''}"><i style="${busy ? '' : `width:${cur.status === 'done' || cur.status === 'approved' ? 100 : 60}%`}"></i></div><b>${busy ? 'Đang làm' : statusText[cur.status] || ''}</b></div>` : ''}
+      </div>
+    </div>
+    <div class="ag-sec"><h4>Việc gần đây</h4>
+      ${tasks.length ? '<ul>' + tasks.map(t => `<li class="link" data-task="${esc(t.id)}"><span class="ck">${t.status === 'done' || t.status === 'approved' ? '✔' : '•'}</span><b>${esc(t.id)}</b><span class="tt">${esc(t.title)}</span><span class="tag ${t.status}">${statusText[t.status] || t.status}</span></li>`).join('') + '</ul>' : '<div class="empty">Chưa có.</div>'}
+    </div>
+    <div class="ag-sec"><details><summary>Thao tác vừa rồi, tệp và kỹ năng</summary>
+      ${a.tools.length ? '<ul style="margin-top:6px">' + a.tools.slice(0, 8).map(t => `<li><time>${hhmm(t.ts)}</time> ${esc(t.text)}</li>`).join('') + '</ul>' : '<div class="empty">Chưa có thao tác.</div>'}
+      <div class="chips">${[...a.files, ...a.skills].map(f => `<span class="chip">${esc(f)}</span>`).join('')}</div>
+    </details></div>`;
 }
 function openDetail(id) {
   selected = id;
@@ -591,7 +618,7 @@ const toggles = {
   overview: b => b.classList.toggle('on', !$('#overview').classList.toggle('hidden')),
   log: b => b.classList.toggle('on', !$('#log').classList.toggle('hidden')),
   demo: () => post('/api/demo', { on: !state?.settings.demo }),
-  sound: () => toggleSettings(),
+  sound: b => b.classList.toggle('on', !$('#soundpop').classList.toggle('hidden')),
   calm: () => openRoom(),
   approve1: () => {
     if (!state) return;
@@ -608,7 +635,23 @@ initCalmRoom({
   onUnread: n => { $('#calm-badge').textContent = n; $('#calm-badge').classList.toggle('hidden', !n); },
 });
 $('#log-full').onclick = () => openFullLog();
-const syncSoundIcon = () => { $('#btn-sound img').src = UI + (sound.settings.muted ? 'icon-mute.webp' : 'icon-sound.webp'); };
+// Thẻ âm thanh nhanh dưới lưới nút
+const fill = el => el.style.setProperty('--v', el.value + '%');
+const syncSoundIcon = () => {
+  const st = sound.settings;
+  $('#btn-sound img').src = UI + (st.muted ? 'icon-mute.webp' : 'icon-sound.webp');
+  $('#q-on').checked = !st.muted;
+  $('#q-music').value = Math.round(st.music * 100); $('#q-music-v').textContent = $('#q-music').value + '%'; fill($('#q-music'));
+  $('#q-sfx').value = Math.round(st.sfx * 100); $('#q-sfx-v').textContent = $('#q-sfx').value + '%'; fill($('#q-sfx'));
+};
+// Thanh trượt: phần đã kéo tô màu xanh
+document.addEventListener('input', e => { if (e.target.type === 'range') fill(e.target); });
+$('#q-on').onchange = e => sound.set('muted', !e.target.checked);
+$('#q-music').oninput = e => { sound.set('music', e.target.value / 100); if (!sound.settings.musicOn) sound.set('musicOn', true); };
+$('#q-sfx').oninput = e => sound.set('sfx', e.target.value / 100);
+$('#q-music-try').onclick = () => { if (!sound.settings.musicOn) sound.set('musicOn', true); sound.playVoice('dan'); };
+$('#q-sfx-try').onclick = () => sound.playVoice(sound.settings.events.alert.voice);
+$('#q-more').onclick = () => { $('#soundpop').classList.add('hidden'); $('#btn-sound').classList.remove('on'); toggleSettings(true); };
 sound.onChange(syncSoundIcon);
 syncSoundIcon();
 if (innerWidth < 760) {

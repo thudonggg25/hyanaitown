@@ -89,7 +89,7 @@ function msgHtml(m, prev, liveId) {
   if (m.role === 'hyan') return html + `<div class="m hyan" data-id="${m.id}"><div class="who">Bạn ${src}<time>${hhmm(m.ts)}</time></div><div class="txt">${md(m.text)}</div></div>`;
   if (m.role === 'calm') {
     const c = parseChoices(m.text);
-    return html + `<div class="m calm" data-id="${m.id}"><img class="av" src="assets/ui/icon-mail.webp" alt=""><div class="bub"><div class="who">Calm ${src}<time>${hhmm(m.ts)}</time></div>
+    return html + `<div class="m calm" data-id="${m.id}"><img class="av" src="assets/sprites/nv/calm-mat.webp" alt=""><div class="bub"><div class="who">Calm ${src}<time>${hhmm(m.ts)}</time></div>
       <div class="txt md">${md(c.body)}</div>${choiceHtml(c, m.id === liveId)}</div></div>`;
   }
   if (m.role === 'step') return html + `<details class="m step${m.error ? ' err' : ''}" data-id="${m.id}"><summary><span class="ic">${m.error ? '⚠' : '⚙'}</span>${esc(m.text)}<time>${hhmm(m.ts)}</time></summary>
