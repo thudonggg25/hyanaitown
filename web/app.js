@@ -618,7 +618,15 @@ const toggles = {
   overview: b => b.classList.toggle('on', !$('#overview').classList.toggle('hidden')),
   log: b => b.classList.toggle('on', !$('#log').classList.toggle('hidden')),
   demo: () => post('/api/demo', { on: !state?.settings.demo }),
-  sound: b => b.classList.toggle('on', !$('#soundpop').classList.toggle('hidden')),
+  sound: b => {
+    const pop = $('#soundpop'), open = pop.classList.toggle('hidden') === false;
+    b.classList.toggle('on', open);
+    // đặt thẻ ngay dưới nút Âm thanh, mũi nhọn chỉ vào nút
+    const r = b.getBoundingClientRect(), base = $('#leftcol').getBoundingClientRect();
+    const left = Math.max(0, Math.min(r.left + r.width / 2 - base.left - 165, base.width - 330));
+    pop.style.left = left + 'px';
+    pop.style.setProperty('--arrow', (r.left + r.width / 2 - base.left - left - 8) + 'px');
+  },
   calm: () => openRoom(),
   approve1: () => {
     if (!state) return;
