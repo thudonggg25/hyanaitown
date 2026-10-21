@@ -5,6 +5,8 @@
 //       Gửi một việc lên bảng với trạng thái "Chờ duyệt", rồi chờ người dùng bấm.
 //       Thoát mã 0 = đã duyệt, 2 = bị từ chối, 3 = hết giờ chờ, 1 = lỗi.
 //   node .claude/town/board.js cho <MÃ-VIỆC>        Chờ tiếp một việc đã gửi.
+//   node .claude/town/board.js xem <MÃ-VIỆC>        Xem trạng thái một việc ngay, không chờ.
+//   node .claude/town/board.js ds                   Liệt kê việc đang chờ duyệt và việc mới duyệt / từ chối.
 //   node .claude/town/board.js ghi "Nội dung" --agent viet-bai [--bubble "chữ trên đầu"]
 //       Ghi một dòng vào nhật ký (và đổi bong bóng nếu có).
 
@@ -26,7 +28,7 @@ async function waitFor(id, maxMinutes = 9) {
   while (Date.now() < end) {
     const t = await call('GET', `/api/board/${id}`);
     if (t.status === 'approved') { console.log(`\nĐÃ DUYỆT ${id}.${t.note ? ' Ghi chú: ' + t.note : ''}`); return 0; }
-    if (t.status === 'rejected') { console.log(`\nBỊ TỪ CHỐI ${id}.${t.note ? ' Lý do: ' + t.note : ''} Hãy dừng và báo lại cho Điều phối.`); return 2; }
+    if (t.status === 'rejected') { console.log(`\nBỊ TỪ CHỐI ${id}.${t.note ? ' Lý do: ' + t.note : ''} Hãy dừng và báo lại cho Calm.`); return 2; }
     process.stdout.write('.');
     await new Promise(r => setTimeout(r, 2000));
   }
@@ -44,12 +46,20 @@ async function waitFor(id, maxMinutes = 9) {
       process.exit(noWait ? 0 : await waitFor(t.id));
     } else if (cmd === 'cho') {
       process.exit(await waitFor(args[0]));
+    } else if (cmd === 'xem') {
+      const t = await call('GET', `/api/board/${args[0]}`);
+      console.log(`${t.id} [${t.status}] ${t.title}${t.note ? ' · ' + t.note : ''}`);
+    } else if (cmd === 'ds') {
+      const s = await call('GET', '/api/state');
+      const rows = s.board.filter(t => ['waiting_approval', 'approved', 'rejected'].includes(t.status));
+      if (!rows.length) console.log('Không có việc nào chờ duyệt.');
+      for (const t of rows) console.log(`${t.id} [${t.status}] ${t.title}${t.note ? ' · ' + t.note : ''}`);
     } else if (cmd === 'ghi') {
       const agent = opt('agent'), bubble = opt('bubble');
       await call('POST', '/api/log', { agent, text: args.join(' '), bubble });
       console.log('Đã ghi.');
     } else {
-      console.log('Dùng: duyet "Tiêu đề" --agent <id> | cho <MÃ-VIỆC> | ghi "Nội dung" --agent <id>');
+      console.log('Dùng: duyet "Tiêu đề" --agent <id> | cho <MÃ-VIỆC> | xem <MÃ-VIỆC> | ds | ghi "Nội dung" --agent <id>');
       process.exit(1);
     }
   } catch (e) {

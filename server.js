@@ -25,7 +25,7 @@ function makeAgent(def, isBoss = false, isGuest = false) {
     isBoss, isGuest, home: def.id,
     at: def.id,             // đang đứng ở phòng nào (khác home khi đi bàn giao)
     state: 'idle',          // idle | working | waiting | done | error
-    bubble: isBoss ? 'Chờ việc' : 'Đang uống matcha, chờ việc',
+    bubble: isBoss ? 'Chờ việc' : 'Chờ việc',
     task: null, tools: [], updatedAt: now(),
   };
 }
@@ -134,7 +134,9 @@ function toolBubble(name, input = {}) {
     case 'Bash': return `Chạy lệnh: ${(input.description || input.command || '').slice(0, 40)}`;
     case 'Skill': return `Dùng kỹ năng /${input.skill || input.name || ''}`;
     case 'Task': case 'Agent': return `Giao việc cho ${input.subagent_type || 'agent'}`;
-    default: return `Dùng ${name}`;
+    default:
+      if (/^mcp__linear/i.test(name)) return /comment/i.test(name) ? 'Trả lời trên Linear' : /update|save|create/i.test(name) ? 'Cập nhật Linear' : 'Đọc Linear';
+      return `Dùng ${name}`;
   }
 }
 function relPath(p, cwd) {
@@ -231,7 +233,7 @@ function handleHook(ev) {
       addLog(id, t ? `Xong ${t.id}: ${t.title}` : 'Xong việc', 'done');
       setTimeout(() => {
         const a = agents[id];
-        if (a && a.state === 'done') { setAgent(id, { state: 'idle', bubble: 'Đang uống matcha, chờ việc', at: a.home }); push(); }
+        if (a && a.state === 'done') { setAgent(id, { state: 'idle', bubble: 'Chờ việc', at: a.home }); push(); }
       }, 20000);
       break;
     }
@@ -367,7 +369,7 @@ const api = {
   'POST /api/clear': async (req, res) => {
     board = []; taskSeq = 0; log.length = 0; saveBoard(); fs.writeFile(logFile, '', () => {});
     for (const a of Object.values(agents)) Object.assign(a, { state: 'idle', task: null, tools: [], at: a.home,
-      bubble: a.isBoss ? 'Chờ việc' : 'Đang uống matcha, chờ việc' });
+      bubble: a.isBoss ? 'Chờ việc' : 'Chờ việc' });
     push();
     sendJson(res, 200, { ok: true });
   },

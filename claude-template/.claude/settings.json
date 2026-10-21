@@ -1,4 +1,22 @@
 {
+  "permissions": {
+    "allow": [
+      "Bash(git *)",
+      "Bash(node *)",
+      "Bash(npx *)",
+      "Bash(npm run *)",
+      "Bash(npm test*)",
+      "mcp__linear"
+    ],
+    "deny": [
+      "Bash(git push origin main*)",
+      "Bash(git push * main)",
+      "Bash(git push --force*)",
+      "Bash(git push -f*)",
+      "Bash(node scripts/cloudflare.mjs deploy*)",
+      "Read(./**/.env*)"
+    ]
+  },
   "hooks": {
     "PreToolUse": [
       {
