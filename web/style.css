@@ -13,7 +13,8 @@
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--ink); }
-#scene { position: fixed; inset: 0; }
+#scene { position: fixed; inset: 0; background: #e9c9d8; }
+#scene canvas { cursor: grab; }
 #scene canvas { display: block; }
 
 /* Thanh trên cùng */
@@ -116,4 +117,7 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); c
   #log { top: auto; bottom: 8px; left: 8px; right: 8px; width: auto; max-height: 40%; z-index: 5; }
   #detail { top: auto; bottom: 8px; left: 8px; right: 8px; width: auto; max-height: 45%; z-index: 6; }
   #credits { display: none; }
+  .sign3d { font-size: 11px; padding: 1px 6px; }
+  .label3d, .bubble3d.idle { font-size: 10px; }
+  .bubble3d { max-width: 140px; font-size: 11px; }
 }
