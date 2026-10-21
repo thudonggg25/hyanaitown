@@ -9,6 +9,7 @@ import * as THREE from 'three';
 import { OrbitControls } from './vendor/addons/OrbitControls.js';
 import { CSS2DRenderer, CSS2DObject } from './vendor/addons/CSS2DRenderer.js';
 import * as sound from './sound.js';
+import { initSettings, toggleSettings } from './settings.js';
 
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -449,25 +450,30 @@ function announce(s) {
   const more = pending > lastPending;
   lastPending = pending;
   if (firstState) { firstState = false; return; } // mở trang thì không kêu lại chuyện cũ
-  // Nhiều sự kiện cùng lúc thì chỉ kêu tiếng quan trọng nhất
+  // Mỗi mục nhật ký mới thuộc một loại; mỗi loại bật/tắt thông báo và tiếng riêng (bảng Cài đặt thông báo).
+  // Nhiều sự kiện cùng lúc thì chỉ kêu tiếng quan trọng nhất.
   const rank = { notify: 0, ok: 1, handoff: 2, done: 3, error: 4, alert: 5 };
   let snd = null;
-  const want = n => { if (snd === null || rank[n] > rank[snd]) snd = n; };
+  const fire = (ev, who, text) => {
+    const c = sound.settings.events[ev];
+    if (c?.toast && text) { toast(ev, who, text); sound.desktopNotify(who, text); }
+    if (c?.sound && (snd === null || rank[ev] > rank[snd])) snd = ev;
+  };
   for (const e of fresh) {
     const who = nameOf(e.agent);
-    if (e.kind === 'error') { want('error'); toast('error', who, e.text); }
-    else if (e.kind === 'done') { want('done'); if (/^Xong /.test(e.text)) toast('done', who, e.text); }
-    else if (e.kind === 'handoff') want('handoff');
-    else if (e.kind === 'start') want('notify');
+    if (e.kind === 'error') fire('error', who, e.text);
+    else if (e.kind === 'done') fire('done', who, /^Xong /.test(e.text) ? e.text : null);
+    else if (e.kind === 'handoff') fire('handoff', who, e.text);
+    else if (e.kind === 'start') fire('notify', who, e.text);
     else if (e.kind === 'approval') {
-      if (/^(Xin quyền|Gửi )/.test(e.text)) toast('alert', who, e.text);
-      else if (/duyệt/.test(e.text) && !/từ chối/.test(e.text)) want('ok');
+      if (/^(Xin quyền|Gửi )/.test(e.text)) fire('alert', who, e.text);
+      else if (/duyệt/.test(e.text) && !/từ chối/.test(e.text)) fire('ok', who, e.text);
     }
   }
-  if (more) want('alert');
+  if (more && snd !== 'alert' && sound.settings.events.alert.sound) snd = 'alert';
   if (snd) sound.play(snd);
 }
-const TOAST_ICON = { alert: 'bell', error: 'error', done: 'ok', info: 'mail' };
+const TOAST_ICON = { alert: 'bell', error: 'error', done: 'ok', ok: 'ok', handoff: 'mail', notify: 'play', info: 'mail' };
 function toast(kind, who, text) {
   const box = $('#toasts');
   const el = document.createElement('div');
@@ -563,7 +569,7 @@ const toggles = {
   overview: b => b.classList.toggle('on', !$('#overview').classList.toggle('hidden')),
   log: b => b.classList.toggle('on', !$('#log').classList.toggle('hidden')),
   demo: () => post('/api/demo', { on: !state?.settings.demo }),
-  sound: b => b.classList.toggle('on', !$('#soundpanel').classList.toggle('hidden')),
+  sound: () => toggleSettings(),
   approve1: () => {
     if (!state) return;
     const first = state.approvals[0]?.id || state.board.find(t => t.status === 'waiting_approval')?.id;
@@ -572,22 +578,11 @@ const toggles = {
 };
 document.querySelectorAll('[data-act]').forEach(b => b.addEventListener('click', () => { sound.play('click'); toggles[b.dataset.act](b); }));
 
-// Bảng âm thanh: tắt/mở, âm lượng tiếng báo và nhạc nền (nhớ lại cho lần sau)
-function syncSound() {
-  const st = sound.settings;
-  $('#snd-mute').checked = !st.muted;
-  $('#snd-music').checked = st.musicOn;
-  $('#snd-sfx-vol').value = Math.round(st.sfx * 100);
-  $('#snd-music-vol').value = Math.round(st.music * 100);
-  $('#btn-sound img').src = UI + (st.muted ? 'icon-mute.webp' : 'icon-sound.webp');
-}
-$('#snd-mute').onchange = e => { sound.set('muted', !e.target.checked); syncSound(); };
-$('#snd-music').onchange = e => sound.set('musicOn', e.target.checked);
-$('#snd-sfx-vol').oninput = e => sound.set('sfx', e.target.value / 100);
-$('#snd-sfx-vol').onchange = () => sound.play('notify');
-$('#snd-music-vol').oninput = e => sound.set('music', e.target.value / 100);
-document.querySelectorAll('[data-try]').forEach(b => b.addEventListener('click', () => sound.play(b.dataset.try)));
-syncSound();
+// Bảng cài đặt thông báo; icon loa trên thanh công cụ đổi theo tắt/mở tiếng
+initSettings();
+const syncSoundIcon = () => { $('#btn-sound img').src = UI + (sound.settings.muted ? 'icon-mute.webp' : 'icon-sound.webp'); };
+sound.onChange(syncSoundIcon);
+syncSoundIcon();
 if (innerWidth < 760) {
   for (const k of ['overview', 'log']) { $('#' + k).classList.add('hidden'); document.querySelector(`[data-act=${k}]`).classList.remove('on'); }
 }

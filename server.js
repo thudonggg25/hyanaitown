@@ -297,6 +297,42 @@ function handlePermission(ev, res) {
   push();
 }
 
+// ---------- Âm thanh của bạn: tệp tải lên + cài đặt thông báo ----------
+const SOUND_DIR = path.join(DATA, 'am-thanh');
+const SOUND_SETTINGS = path.join(DATA, 'am-thanh.json');
+fs.mkdirSync(SOUND_DIR, { recursive: true });
+const AUDIO = { '.mp3': 'audio/mpeg', '.ogg': 'audio/ogg', '.oga': 'audio/ogg', '.wav': 'audio/wav', '.m4a': 'audio/mp4',
+  '.aac': 'audio/aac', '.webm': 'audio/webm', '.flac': 'audio/flac', '.opus': 'audio/ogg' };
+// Tên tệp an toàn: bỏ dấu, chỉ giữ chữ số và - _ .
+function safeName(n) {
+  const ext = path.extname(String(n || '')).toLowerCase();
+  if (!AUDIO[ext]) return null;
+  const base = path.basename(String(n), path.extname(String(n))).normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd').replace(/Đ/g, 'D').replace(/[^\w-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'am-thanh';
+  return base + ext;
+}
+function listSounds() {
+  return fs.readdirSync(SOUND_DIR).filter(f => AUDIO[path.extname(f).toLowerCase()])
+    .map(f => ({ name: f, size: fs.statSync(path.join(SOUND_DIR, f)).size }));
+}
+function readSoundSettings() { try { return JSON.parse(fs.readFileSync(SOUND_SETTINGS, 'utf8')); } catch { return null; } }
+// Phát tệp âm thanh, có hỗ trợ tua (Range) cho nhạc nền dài
+function serveSound(req, res, name) {
+  const file = path.join(SOUND_DIR, path.basename(name));
+  fs.stat(file, (err, st) => {
+    if (err || !AUDIO[path.extname(file).toLowerCase()]) { res.writeHead(404); return res.end(); }
+    const type = AUDIO[path.extname(file).toLowerCase()];
+    const m = /bytes=(\d*)-(\d*)/.exec(req.headers.range || '');
+    if (m) {
+      const start = m[1] ? Number(m[1]) : 0, end = m[2] ? Math.min(Number(m[2]), st.size - 1) : st.size - 1;
+      res.writeHead(206, { 'Content-Type': type, 'Accept-Ranges': 'bytes', 'Content-Length': end - start + 1, 'Content-Range': `bytes ${start}-${end}/${st.size}` });
+      return fs.createReadStream(file, { start, end }).pipe(res);
+    }
+    res.writeHead(200, { 'Content-Type': type, 'Accept-Ranges': 'bytes', 'Content-Length': st.size });
+    fs.createReadStream(file).pipe(res);
+  });
+}
+
 // ---------- HTTP ----------
 function sendJson(res, code, obj) {
   if (res.writableEnded) return;
@@ -366,6 +402,32 @@ const api = {
     push();
     sendJson(res, 200, settings);
   },
+  'GET /api/sounds': (req, res) => sendJson(res, 200, { files: listSounds(), settings: readSoundSettings() }),
+  'POST /api/sounds/settings': async (req, res) => {
+    const st = await readBody(req);
+    fs.writeFile(SOUND_SETTINGS, JSON.stringify(st, null, 1), () => {});
+    sendJson(res, 200, { ok: true });
+  },
+  // Tải tệp lên: thân yêu cầu là nội dung tệp, tên tệp ở ?name=
+  'POST /api/sounds/upload': (req, res) => {
+    const name = safeName(new URL(req.url, 'http://localhost').searchParams.get('name'));
+    if (!name) return sendJson(res, 400, { error: 'Chỉ nhận tệp âm thanh: mp3, ogg, wav, m4a, aac, webm, flac, opus' });
+    const LIMIT = 40e6;
+    const chunks = []; let size = 0, tooBig = false;
+    req.on('data', c => { size += c.length; if (size > LIMIT) { tooBig = true; req.destroy(); } else chunks.push(c); });
+    req.on('close', () => { if (tooBig) sendJson(res, 413, { error: 'Tệp lớn quá (tối đa 40 MB)' }); });
+    req.on('end', () => {
+      let final = name, i = 2;
+      while (fs.existsSync(path.join(SOUND_DIR, final))) final = name.replace(/(\.\w+)$/, `-${i++}$1`);
+      fs.writeFile(path.join(SOUND_DIR, final), Buffer.concat(chunks), err =>
+        err ? sendJson(res, 500, { error: 'Không lưu được tệp' }) : sendJson(res, 200, { name: final, files: listSounds() }));
+    });
+  },
+  'POST /api/sounds/delete': async (req, res) => {
+    const { name } = await readBody(req);
+    const file = path.join(SOUND_DIR, path.basename(String(name || '')));
+    fs.unlink(file, () => sendJson(res, 200, { files: listSounds() }));
+  },
   'POST /api/clear': async (req, res) => {
     board = []; taskSeq = 0; log.length = 0; saveBoard(); fs.writeFile(logFile, '', () => {});
     for (const a of Object.values(agents)) Object.assign(a, { state: 'idle', task: null, tools: [], at: a.home,
@@ -405,6 +467,7 @@ const server = http.createServer(async (req, res) => {
     return t ? sendJson(res, 200, t) : sendJson(res, 404, { error: 'Không tìm thấy' });
   }
   if (api[key]) return api[key](req, res);
+  if (req.method === 'GET' && url.pathname.startsWith('/am-thanh/')) return serveSound(req, res, decodeURIComponent(url.pathname.slice(10)));
   if (req.method !== 'GET') return sendJson(res, 404, { error: 'Không có' });
   // File tĩnh trong thư mục web/
   const rel = url.pathname === '/' ? 'index.html' : decodeURIComponent(url.pathname).replace(/^\/+/, '');
