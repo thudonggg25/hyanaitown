@@ -8,7 +8,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from './vendor/addons/OrbitControls.js';
 import { CSS2DRenderer, CSS2DObject } from './vendor/addons/CSS2DRenderer.js';
-import { createToy } from './toy.js';
 
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -53,62 +52,22 @@ host.appendChild(labels.domElement);
 const scene = new THREE.Scene();
 scene.background = new THREE.Color('#e9c9d8'); // màu trời ngoài mép ảnh (màn hình dọc)
 
-// Kiểu xem: 'paint' = tranh vẽ phẳng nhìn thẳng (mặc định, hyan chọn).
-// Hai kiểu thử nghiệm chỉ mở bằng địa chỉ: ?view=hd (tranh dựng 2.5D, xoay được), ?view=toy (3D hình khối).
-let VIEW = new URLSearchParams(location.search).get('view') || 'paint';
-if (!['hd', 'paint', 'toy'].includes(VIEW)) VIEW = 'paint';
-const HD = VIEW === 'hd';
-document.body.classList.add('view-' + (VIEW === 'toy' ? 'toy' : 'paint'));
-const toy = VIEW === 'toy' ? createToy({ renderer, scene, label }) : null;
-
-// 2.5D: bản đồ nằm làm mặt sàn, nhà và người là tấm tranh đứng luôn quay về camera.
-// Tranh vốn vẽ cho góc nhìn thẳng, nên kéo dài sàn và tấm đứng cho bù góc nghiêng mặc định.
-const TILT = 0.72;                 // góc camera so với phương thẳng đứng (radian)
-const ZK = 1 / Math.cos(TILT);     // kéo dài sàn theo chiều sâu
-const YK = 1 / Math.sin(TILT);     // kéo cao tranh đứng
-const gz = y => (y - MAP_H / 2) * ZK;
-
-let camera, controls;
-if (toy) ({ camera, controls } = toy);
-else if (HD) {
-  camera = new THREE.PerspectiveCamera(28, 1, 50, 12000);
-  controls = new OrbitControls(camera, renderer.domElement);
-  controls.enableDamping = true;
-  controls.dampingFactor = 0.1;
-  controls.screenSpacePanning = false;
-  controls.minPolarAngle = TILT - 0.32;
-  controls.maxPolarAngle = TILT + 0.2;
-  controls.minAzimuthAngle = -0.55;
-  controls.maxAzimuthAngle = 0.55;
-  controls.minDistance = 700;
-  controls.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN };
-  controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
-  controls.rotateSpeed = 0.5;
-} else {
-  camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 400);
-  camera.position.set(0, 0, 200);
-  controls = new OrbitControls(camera, renderer.domElement);
-  controls.enableRotate = false;
-  controls.screenSpacePanning = true;
-  controls.enableDamping = true;
-  controls.dampingFactor = 0.12;
-  controls.mouseButtons = { LEFT: THREE.MOUSE.PAN, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN };
-  controls.touches = { ONE: THREE.TOUCH.PAN, TWO: THREE.TOUCH.DOLLY_PAN };
-  controls.minZoom = 0.9;
-  controls.maxZoom = 3.2;
-  controls.zoomToCursor = true;
-}
+const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 400);
+camera.position.set(0, 0, 200);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableRotate = false;
+controls.screenSpacePanning = true;
+controls.enableDamping = true;
+controls.dampingFactor = 0.12;
+controls.mouseButtons = { LEFT: THREE.MOUSE.PAN, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN };
+controls.touches = { ONE: THREE.TOUCH.PAN, TWO: THREE.TOUCH.DOLLY_PAN };
+controls.minZoom = 0.9;
+controls.maxZoom = 3.2;
+controls.zoomToCursor = true;
 
 let halfW = MAP_W / 2, halfH = MAP_H / 2;
 function resize() {
   const w = innerWidth, h = innerHeight, a = w / h;
-  if (toy) { toy.resize(w, h); renderer.setSize(w, h); labels.setSize(w, h); return; }
-  if (HD) {
-    camera.aspect = a; camera.updateProjectionMatrix();
-    renderer.setSize(w, h); labels.setSize(w, h);
-    hdFit();
-    return;
-  }
   // Màn hình ngang: phủ kín khung bằng ảnh. Màn hình dọc: giữ đủ bề ngang hòn đảo.
   if (a >= MAP_W / MAP_H) { halfW = MAP_W / 2; halfH = halfW / a; }
   else { halfH = MAP_H / 2; halfW = halfH * a; if (halfW < 500) { halfW = 500; halfH = halfW / a; } }
@@ -117,35 +76,11 @@ function resize() {
   renderer.setSize(w, h);
   labels.setSize(w, h);
 }
-// Khoảng cách camera để thấy vừa đủ bề ngang (hoặc bề cao) bản đồ
-let hdDist = 2000;
-function hdFit() {
-  const vf = THREE.MathUtils.degToRad(camera.fov);
-  const hf = 2 * Math.atan(Math.tan(vf / 2) * camera.aspect);
-  const byW = (MAP_W * 0.5) / Math.tan(hf / 2), byH = (MAP_H * 0.5) / Math.tan(vf / 2);
-  hdDist = Math.min(byW, byH) * (camera.aspect < 1 ? 1.25 : 1.02);
-  controls.maxDistance = hdDist * 1.15;
-  if (!camera.userData.placed) { hdHome(); camera.userData.placed = true; }
-}
-function hdHome() {
-  controls.target.set(0, 0, 20);
-  camera.position.set(0, Math.cos(TILT) * hdDist, 20 + Math.sin(TILT) * hdDist);
-  camera.updateProjectionMatrix();
-}
-
 addEventListener('resize', resize);
 resize();
 
 // Không cho kéo camera ra khỏi bản đồ
 function clampView() {
-  if (toy) return toy.clampView();
-  if (HD) {
-    const t = controls.target, mx = MAP_W * 0.38, mz = MAP_H * ZK * 0.32;
-    const cx = THREE.MathUtils.clamp(t.x, -mx, mx), cz = THREE.MathUtils.clamp(t.z, -mz, mz);
-    camera.position.x += cx - t.x; camera.position.z += cz - t.z; camera.position.y -= t.y;
-    t.set(cx, 0, cz);
-    return;
-  }
   const vw = halfW / camera.zoom, vh = halfH / camera.zoom;
   const mx = Math.max(0, MAP_W / 2 - vw), my = Math.max(0, MAP_H / 2 - vh);
   const t = controls.target;
@@ -295,37 +230,18 @@ function label(text, cls) {
 }
 
 async function buildMap() {
-  if (toy) return toy.buildGround();
   const tex = await loadTex('map.webp');
   if (!tex) return;
   const m = new THREE.Mesh(new THREE.PlaneGeometry(MAP_W, MAP_H), new THREE.MeshBasicMaterial({ map: tex, depthWrite: false, depthTest: false }));
   m.position.z = -10;
-  m.renderOrder = -1e6;
-  if (HD) { m.rotation.x = -Math.PI / 2; m.scale.y = ZK; m.position.set(0, 0, 0); }
+  m.renderOrder = -1;
   scene.add(m);
-}
-
-// 2.5D: tấm tranh đứng quay theo camera, cái nào gần camera hơn thì vẽ sau
-const standees = []; // { obj, x, y } toạ độ chân trên bản đồ
-const camFwd = new THREE.Vector3();
-function hdUpdate() {
-  const az = controls.getAzimuthalAngle();
-  camera.getWorldDirection(camFwd);
-  for (const s of standees) {
-    s.obj.rotation.y = az;
-    const d = (wx(s.x) - camera.position.x) * camFwd.x + (gz(s.y) - camera.position.z) * camFwd.z - camera.position.y * camFwd.y;
-    const ro = Math.round(-d * 4);
-    if (s.obj.isMesh) s.obj.renderOrder = ro;
-    if (s.sprite?.()) s.sprite().renderOrder = ro;
-    if (s.shadow) s.shadow.renderOrder = ro - 1;
-  }
 }
 
 async function buildHouse(houseId, roomIds, names) {
   const plot = PLOTS[houseId];
-  if (toy) { houses[houseId] = { plot, rooms: roomIds, ...toy.buildHouse(houseId, plot, names, roomIds) }; return; }
   const b = meta.buildings[houseId];
-  const h = { plot, door: { x: plot.x - plot.w * 0.06, y: plot.y + 22 }, side: { x: 1, y: 0 }, out: { x: 0, y: 1 }, rooms: roomIds };
+  const h = { plot, door: { x: plot.x - plot.w * 0.06, y: plot.y + 22 }, rooms: roomIds };
   houses[houseId] = h;
   const sign = label(names, 'sign3d');
   if (!b) return;
@@ -336,16 +252,9 @@ async function buildHouse(houseId, roomIds, names) {
   // Chân nhà (đảo cỏ nhỏ dưới nhà) nằm cao hơn mép dưới ảnh khoảng 17%
   mesh.position.set(wx(plot.x), wy(plot.y) - hh * 0.17, depth(plot.y));
   mesh.renderOrder = Math.round(plot.y * 10);
-  if (HD) {
-    // tâm xoay ở chân nhà để khi quay camera nhà xoay tại chỗ
-    mesh.geometry.translate(0, -hh * 0.17, 0);
-    mesh.position.set(wx(plot.x), 0, gz(plot.y));
-    mesh.scale.y = YK;
-    standees.push({ obj: mesh, x: plot.x, y: plot.y - 8 });
-  }
   mesh.userData.agentId = roomIds[0];
   mesh.userData.mask = alphaMask(tex);
-  sign.position.set(0, hh * (HD ? 0.86 : 1.02), 0);
+  sign.position.set(0, hh * 1.02, 0);
   mesh.add(sign);
   scene.add(mesh);
   clickable.push(mesh);
@@ -362,7 +271,6 @@ function build(state) {
     const names = hid === 'coder' && rooms.length > 1 ? 'Xưởng Code' : rooms.map(r => defs[r]?.name || r).join(' · ');
     buildHouse(hid, rooms, names);
   }
-  if (toy) toy.buildTrees();
   built = true;
 }
 
@@ -396,23 +304,6 @@ function buildPerson(a) {
   const p = { group: g, body, shadow, nameTag, bubble, bubbleDiv, data: a, H, W, phase: Math.random() * 6,
     route: [], pos: null, dir: { x: 0, y: 1 }, walking: false, sprite: null, pose: 'front', flip: false, goal: null };
   people[a.id] = p;
-  if (HD) {
-    shadow.rotation.x = -Math.PI / 2;
-    shadow.scale.set(W * 0.75, W * 0.4, 1);
-    shadow.position.y = 1;
-    g.scale.y = YK;
-    standees.push({ obj: g, get x() { return p.pos?.x ?? 0; }, get y() { return p.pos?.y ?? 0; }, sprite: () => p.sprite, shadow });
-  }
-  if (toy) {
-    // Bản 3D: bỏ sprite, dựng nhân vật chibi; tên và bong bóng gắn trên đầu
-    scene.remove(g);
-    const v = p.toy = toy.buildPerson(a);
-    nameTag.position.set(0, v.H + 0.2, 0);
-    bubble.position.set(0, v.H + 1.1, 0);
-    v.root.add(nameTag, bubble);
-    p.group = v.root;
-    return p;
-  }
   (charTex[cid] ||= loadTex(info.file, true)).then(base => {
     if (!base) return;
     const tex = base.clone(); // dùng chung ảnh, mỗi người một khung hình riêng
@@ -450,9 +341,8 @@ function spotFor(a) {
   const h = houses[hid] || houses[houseOf(a.home)];
   if (!h) return { x: PLAZA.x, y: PLAZA.y, house: null };
   let x = h.door.x, y = h.door.y;
-  const off = a.at === a.home ? (SLOT[a.id] || 0) * 80
-    : 70 + (Object.values(people).filter(q => q.data.at === a.at && q.data.at !== q.data.home && q.data.id < a.id).length) * 46; // khách đứng lệch sang bên
-  x += off * h.side.x; y += off * h.side.y;
+  if (a.at === a.home) x += (SLOT[a.id] || 0) * 80;
+  else x += 70 + (Object.values(people).filter(q => q.data.at === a.at && q.data.at !== q.data.home && q.data.id < a.id).length) * 46; // khách đứng lệch sang bên
   return { x, y, house: hid };
 }
 
@@ -462,20 +352,6 @@ function plazaEdge(pt) {
   const l = Math.hypot(dx, dy) || 1;
   return { x: PLAZA.x + dx / l * PLAZA.rx, y: PLAZA.y + dy / l * PLAZA.ry };
 }
-// Đi vòng quanh đài phun nước giữa quảng trường thay vì đi xuyên qua
-function viaPlaza(from, to, intoPlaza) {
-  const a = plazaEdge(from), b = intoPlaza ? null : plazaEdge(to);
-  const ang = pt => Math.atan2((pt.y - PLAZA.y) * PLAZA.rx / PLAZA.ry, pt.x - PLAZA.x);
-  const ring = (t, k) => ({ x: PLAZA.x + Math.cos(t) * PLAZA.rx * k, y: PLAZA.y + Math.sin(t) * PLAZA.ry * k });
-  const route = [a];
-  const a1 = ang(a), a2 = ang(b || to);
-  let d = Math.atan2(Math.sin(a2 - a1), Math.cos(a2 - a1));
-  const steps = Math.floor(Math.abs(d) / 0.9);
-  for (let i = 1; i <= steps; i++) route.push(ring(a1 + d * i / (steps + 1), 0.62));
-  if (b) route.push(b);
-  route.push(to);
-  return route;
-}
 function goTo(p, a) {
   const s = spotFor(a);
   if (!p.pos) { p.pos = { x: s.x, y: s.y }; p.goal = s; return; }
@@ -484,7 +360,7 @@ function goTo(p, a) {
   p.goal = s;
   p.wander = null; p.speed = SPEED;
   if (sameHouse || Math.hypot(s.x - p.pos.x, s.y - p.pos.y) < 120) { p.route = [s]; return; }
-  p.route = viaPlaza(p.pos, s);
+  p.route = [plazaEdge(p.pos), plazaEdge(s), s];
 }
 
 // ---------- Cập nhật theo dữ liệu ----------
@@ -592,15 +468,10 @@ document.addEventListener('click', e => {
 
 let drift = false;
 const toggles = {
-  rotate: b => { drift = !drift; if (toy) controls.autoRotate = drift; b.classList.toggle('on', drift); b.textContent = drift ? (toy ? 'Dừng xoay' : 'Dừng lướt') : (toy ? 'Xoay' : 'Lướt'); },
-  view: () => { const next = HD ? 'paint' : 'hd'; try { localStorage.setItem('view', next); } catch {} location.href = location.pathname + '?view=' + next; },
+  rotate: b => { drift = !drift; b.classList.toggle('on', drift); b.textContent = drift ? 'Dừng lướt' : 'Lướt'; },
   names: b => { b.classList.toggle('on', !document.body.classList.toggle('hide-names')); },
   bubbles: b => { b.classList.toggle('on', !document.body.classList.toggle('hide-bubbles')); },
-  home: () => {
-    if (toy) return toy.home();
-    if (HD) return hdHome();
-    camera.position.set(0, 0, 200); camera.zoom = 1; camera.updateProjectionMatrix(); controls.target.set(0, 0, 0);
-  },
+  home: () => { camera.position.set(0, 0, 200); camera.zoom = 1; camera.updateProjectionMatrix(); controls.target.set(0, 0, 0); },
   overview: b => b.classList.toggle('on', !$('#overview').classList.toggle('hidden')),
   log: b => b.classList.toggle('on', !$('#log').classList.toggle('hidden')),
   demo: () => post('/api/demo', { on: !state?.settings.demo }),
@@ -610,9 +481,6 @@ const toggles = {
     if (first) post('/api/decide', { id: first, approve: true });
   },
 };
-if ($('#btn-view')) $('#btn-view').textContent = HD ? 'Kiểu phẳng' : toy ? 'Kiểu tranh' : 'Kiểu 2.5D';
-$('#btn-rotate').textContent = toy ? 'Xoay' : 'Lướt';
-if (HD) $('#credits .only-paint').textContent = 'three.js 2.5D · tranh anime vẽ tay · kéo để xoay, chuột phải để di chuyển, cuộn để phóng to';
 document.querySelectorAll('[data-act]').forEach(b => b.addEventListener('click', () => toggles[b.dataset.act](b)));
 if (innerWidth < 760) {
   for (const k of ['overview', 'log']) { $('#' + k).classList.add('hidden'); document.querySelector(`[data-act=${k}]`).classList.remove('on'); }
@@ -622,7 +490,6 @@ if (innerWidth < 760) {
 const ray = new THREE.Raycaster();
 const ptr = new THREE.Vector2();
 function pick(e) {
-  if (toy) { const id = toy.pick(e); return id ? { object: { userData: { agentId: id } } } : null; }
   ptr.set((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
   ray.setFromCamera(ptr, camera);
   const hits = ray.intersectObjects(clickable, false).filter(hitOpaque);
@@ -651,7 +518,7 @@ function connect() {
   es.onmessage = e => apply(JSON.parse(e.data));
   es.onerror = () => { $('#conn').classList.add('off'); $('#subtitle').textContent = 'Mất kết nối server, đang thử lại…'; };
 }
-window.__town = { openDetail, people, houses, camera, controls };
+window.__town = { openDetail, people, houses };
 
 // ---------- Vòng vẽ ----------
 const clock = new THREE.Clock();
@@ -666,22 +533,17 @@ function planWander(p, t) {
   const others = Object.entries(houses).filter(([id]) => id !== home.house);
   const r = Math.random();
   let dest, route;
-  const hh = houses[home.house];
-  const side = hh?.side || { x: 1, y: 0 }, out = hh?.out || { x: 0, y: 1 };
   if (r < 0.5) {
-    const s = rnd(-70, 70), o = rnd(-5, 30);
-    dest = { x: home.x + side.x * s + out.x * o, y: home.y + side.y * s + out.y * o };
+    dest = { x: home.x + rnd(-70, 70), y: home.y + rnd(-10, 30) };
     route = [dest];
   } else if (r < 0.85 || !others.length) {
-    // quanh quảng trường, tránh đài phun nước ở giữa
-    const ang = rnd(0, Math.PI * 2), k = 0.45 + Math.random() * 0.4;
+    const ang = rnd(0, Math.PI * 2), k = Math.sqrt(Math.random()) * 0.85;
     dest = { x: PLAZA.x + Math.cos(ang) * PLAZA.rx * k, y: PLAZA.y + Math.sin(ang) * PLAZA.ry * k };
-    route = viaPlaza(p.pos, dest, true);
+    route = [plazaEdge(p.pos), dest];
   } else {
     const h = others[Math.floor(Math.random() * others.length)][1];
-    const s = rnd(-40, 40), o = rnd(0, 20);
-    dest = { x: h.door.x + h.side.x * s + h.out.x * o, y: h.door.y + h.side.y * s + h.out.y * o };
-    route = viaPlaza(p.pos, dest);
+    dest = { x: h.door.x + rnd(-40, 40), y: h.door.y + rnd(0, 20) };
+    route = [plazaEdge(p.pos), plazaEdge(dest), dest];
   }
   p.wander = { until: t + rnd(4, 9) + Math.hypot(dest.x - p.pos.x, dest.y - p.pos.y) / STROLL * 1.5 };
   p.route = route; p.speed = STROLL;
@@ -689,7 +551,7 @@ function planWander(p, t) {
 function goHome(p, speed) {
   const s = p.goal;
   p.speed = speed;
-  p.route = Math.hypot(s.x - p.pos.x, s.y - p.pos.y) < 120 ? [s] : viaPlaza(p.pos, s);
+  p.route = Math.hypot(s.x - p.pos.x, s.y - p.pos.y) < 120 ? [s] : [plazaEdge(p.pos), plazaEdge(s), s];
 }
 
 function stepPerson(p, dt, t) {
@@ -714,9 +576,7 @@ function stepPerson(p, dt, t) {
       if (lastPt) { p.pos.x = w.x; p.pos.y = w.y; v.x = v.y = 0; }
       p.route.shift(); continue;
     }
-    let sp = (p.speed || SPEED) * (lastPt ? Math.min(1, 0.25 + d / 40) : 1);
-    // Bản 3D: trục y của bản đồ dài gấp đôi ngoài đời, chỉnh để đi đều mọi hướng
-    if (toy) sp *= 0.7 * d / Math.hypot(dx, dy * 2.1);
+    const sp = (p.speed || SPEED) * (lastPt ? Math.min(1, 0.25 + d / 40) : 1);
     tx = dx / d * sp; ty = dy / d * sp;
     break;
   }
@@ -726,12 +586,6 @@ function stepPerson(p, dt, t) {
   const sp = Math.hypot(v.x, v.y);
   const moving = sp > 6;
   p.walking = moving;
-  if (p.toy) {
-    if (moving) { p.dir.x = v.x / sp; p.dir.y = v.y / sp; p.stride = (p.stride || 0) + dt * (1.2 + sp / 70); }
-    toy.animatePerson(p.toy, { moving, dir: p.dir, stride: p.stride || 0, st, t, phase: p.phase, dt });
-    toy.placePerson(p.toy, p.pos.x, p.pos.y);
-    return;
-  }
   const b = p.body;
   if (moving) {
     p.dir.x = v.x / sp; p.dir.y = v.y / sp;
@@ -756,7 +610,6 @@ function stepPerson(p, dt, t) {
     const breathe = 1 + Math.sin(t * 2 + p.phase) * 0.012;
     b.scale.set(1 / breathe, breathe, 1);
   }
-  if (HD) { p.group.position.set(wx(p.pos.x), 0, gz(p.pos.y)); return; }
   p.group.position.set(wx(p.pos.x), wy(p.pos.y), depth(p.pos.y) + 0.01);
   const ro = Math.round(p.pos.y * 10) + 1;
   if (p.sprite) p.sprite.renderOrder = ro;
@@ -772,18 +625,12 @@ function tick(now) {
   const dt = Math.min(clock.getDelta(), 0.05);
   const t = clock.elapsedTime;
   for (const p of Object.values(people)) stepPerson(p, dt, t);
-  if (drift && HD) {
-    // lướt: camera đung đưa chậm sang hai bên
-    const want = Math.sin(t * 0.12) * 0.4, az = controls.getAzimuthalAngle();
-    const off = camera.position.clone().sub(controls.target).applyAxisAngle(THREE.Object3D.DEFAULT_UP, (want - az) * Math.min(1, dt * 1.5));
-    camera.position.copy(controls.target).add(off);
-  } else if (drift && !toy) {
+  if (drift) {
     const ox = Math.sin(t * 0.08) * 0.35 * dt * 60, oy = Math.cos(t * 0.11) * 0.15 * dt * 60;
     camera.position.x += ox; controls.target.x += ox;
     camera.position.y += oy; controls.target.y += oy;
   }
   controls.update();
-  if (HD) hdUpdate();
   clampView();
   renderer.render(scene, camera);
   labels.render(scene, camera);
