@@ -11,6 +11,8 @@ export const EVENTS = {
   handoff: { label: 'Bàn giao việc',   toast: false, sound: true,  voice: 'giay' },
   notify:  { label: 'Bắt đầu việc mới', toast: false, sound: true,  voice: 'chuong' },
   ok:      { label: 'Được duyệt',      toast: false, sound: true,  voice: 'am' },
+  choice:  { label: 'Calm hỏi bạn chọn', toast: true, sound: true,  voice: 'chuong3' },
+  calm:    { label: 'Calm trả lời',    toast: true,  sound: true,  voice: 'sao' },
 };
 // Tiếng tổng hợp có sẵn
 export const VOICES = {

@@ -8,6 +8,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const { runDemo } = require('./demo');
+const { createCalm } = require('./calm');
 
 const ROOT = __dirname;
 const config = JSON.parse(fs.readFileSync(path.join(ROOT, 'town.config.json'), 'utf8'));
@@ -97,12 +98,19 @@ function ensureAgent(id) {
 
 // ---------- Gửi trạng thái lên trang web ----------
 const clients = new Set();
+// Tin mới trong phòng Calm đẩy riêng (sự kiện "chat") để không gửi lại cả lịch sử
+const calm = createCalm({ DATA, config, onChange: ev => {
+  const data = `event: chat\ndata: ${JSON.stringify(ev)}\n\n`;
+  for (const res of clients) res.write(data);
+  if (ev.type === 'status') push();
+} });
 function snapshot() {
   return {
     title: config.title, subtitle: config.subtitle, boss: config.boss.id,
     rooms: [config.boss.id, ...config.agents.map(a => a.id)],
     agents: Object.values(agents),
-    board: board.slice(-80),
+    board: board.slice(-80).map(({ brief, result, steps, ...t }) => ({ ...t, detail: !!(brief || result || steps) })),
+    calm: calm.status(),
     approvals: approvals.map(({ resolve, timer, ...rest }) => rest),
     log: log.slice(-150), settings,
   };
@@ -122,6 +130,7 @@ function push() {
 const recentStops = {};     // agentId -> thời điểm vừa xong (để vẽ cảnh bàn giao)
 const runningByAgent = {};  // agentId -> task đang chạy
 
+const clip = (v, n) => { const t = String(v ?? ''); return t.length > n ? t.slice(0, n) + '\n…(còn nữa)' : t; };
 function shortPath(p) { return p ? String(p).replace(/\\/g, '/').split('/').slice(-2).join('/') : ''; }
 function toolBubble(name, input = {}) {
   switch (name) {
@@ -178,6 +187,7 @@ function handleHook(ev) {
         const target = ensureAgent(input.subagent_type || 'general-purpose');
         const title = input.description || String(input.prompt || '').slice(0, 60) || 'Việc mới';
         const t = newTask(title, target, 'running');
+        t.brief = clip(input.prompt, 12000);
         runningByAgent[target] = t;
         setAgent(target, { task: t.id });
         setAgent(boss, { state: 'working', bubble: `Giao ${t.id} cho ${agents[target].name}` });
@@ -185,6 +195,11 @@ function handleHook(ev) {
         break;
       }
       a.tools.unshift({ ts: now(), text: toolBubble(ev.tool_name, input) });
+      const rt = runningByAgent[id];
+      if (rt && ev.agent_type) {
+        (rt.steps ||= []).push({ ts: now(), text: toolBubble(ev.tool_name, input) });
+        if (rt.steps.length > 300) rt.steps.shift();
+      }
       a.tools.length = Math.min(a.tools.length, 10);
       trackFile(a, input, ev.cwd);
       setAgent(id, { state: 'working', bubble: toolBubble(ev.tool_name, input) });
@@ -227,7 +242,7 @@ function handleHook(ev) {
     case 'SubagentStop': {
       const id = ensureAgent(ev.agent_type);
       const t = runningByAgent[id];
-      if (t) { setTask(t, 'done'); delete runningByAgent[id]; }
+      if (t) { if (ev.last_assistant_message) t.result = clip(ev.last_assistant_message, 30000); setTask(t, 'done'); delete runningByAgent[id]; }
       recentStops[id] = Date.now();
       setAgent(id, { state: 'done', bubble: t ? `Xong ${t.id}` : 'Xong việc' });
       addLog(id, t ? `Xong ${t.id}: ${t.title}` : 'Xong việc', 'done');
@@ -354,6 +369,7 @@ const api = {
   'POST /hook': async (req, res) => {
     const ev = await readBody(req);
     if (ev.hook_event_name === 'PermissionRequest') return handlePermission(ev, res);
+    if (ev.hook_event_name === 'UserPromptSubmit' || ev.hook_event_name === 'Stop') { try { calm.fromHook(ev); } catch (e) { console.error(e); } }
     let out = {};
     try { out = handleHook(ev) || {}; } catch (e) { console.error(e); }
     sendJson(res, 200, out);
@@ -402,6 +418,16 @@ const api = {
     push();
     sendJson(res, 200, settings);
   },
+  // Phòng Calm: gửi lệnh, dừng, cuộc trò chuyện mới, đọc lịch sử
+  'GET /api/chat': (req, res) => {
+    const q = new URL(req.url, 'http://localhost').searchParams;
+    sendJson(res, 200, { status: calm.status(), messages: calm.history(Number(q.get('before')) || 0, Number(q.get('limit')) || 300) });
+  },
+  'POST /api/chat/send': async (req, res) => sendJson(res, 200, calm.send((await readBody(req)).text)),
+  'POST /api/chat/stop': (req, res) => { calm.stop(); sendJson(res, 200, { ok: true }); },
+  'POST /api/chat/new': (req, res) => sendJson(res, 200, calm.newSession()),
+  'POST /api/chat/dir': async (req, res) => sendJson(res, 200, calm.setDir((await readBody(req)).dir)),
+  'GET /api/log': (req, res) => sendJson(res, 200, log),
   'GET /api/sounds': (req, res) => sendJson(res, 200, { files: listSounds(), settings: readSoundSettings() }),
   'POST /api/sounds/settings': async (req, res) => {
     const st = await readBody(req);

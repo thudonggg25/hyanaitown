@@ -21,10 +21,11 @@
       <div class="sub"><span id="conn" class="dot off"></span><span id="subtitle">Đang kết nối…</span></div>
     </div>
     <nav class="tools">
+      <button data-act="calm" id="btn-calm" class="calm-btn" title="Giao việc và đọc trả lời của Calm"><img src="assets/ui/icon-mail.webp" alt=""><span>Phòng Calm</span><b id="calm-badge" class="badge hidden">0</b></button>
       <button data-act="rotate" title="Camera tự lướt chậm qua thị trấn"><img src="assets/ui/icon-drift.webp" alt=""><span>Lướt</span></button>
-      <button data-act="names" class="on"><img src="assets/ui/icon-name.webp" alt=""><span>Tên</span></button>
-      <button data-act="bubbles" class="on"><img src="assets/ui/icon-bubble.webp" alt=""><span>Bong bóng</span></button>
-      <button data-act="home"><img src="assets/ui/icon-home.webp" alt=""><span>Toàn cảnh</span></button>
+      <button data-act="names" class="on" title="Hiện / ẩn tên"><img src="assets/ui/icon-name.webp" alt=""><span>Tên</span></button>
+      <button data-act="bubbles" class="on" title="Hiện / ẩn bong bóng"><img src="assets/ui/icon-bubble.webp" alt=""><span>Bong bóng</span></button>
+      <button data-act="home" title="Xem toàn cảnh"><img src="assets/ui/icon-home.webp" alt=""><span>Toàn cảnh</span></button>
       <button data-act="overview" class="on"><img src="assets/ui/icon-map.webp" alt=""><span>Tổng quan</span></button>
       <button data-act="log" class="on"><img src="assets/ui/icon-log.webp" alt=""><span>Nhật ký</span></button>
       <button data-act="demo" id="btn-demo"><img src="assets/ui/icon-play.webp" alt=""><span>Tự chạy</span></button>
@@ -74,6 +75,77 @@
     </div>
   </div>
 
+
+  <!-- Phòng Calm: giao việc, đọc trả lời đầy đủ, chọn phương án -->
+  <div id="calm-wrap" class="modal-wrap hidden">
+    <div class="backdrop" data-close="calm-wrap"></div>
+    <div class="modal big">
+      <h2>Phòng Calm</h2>
+      <button class="close" data-close="calm-wrap" aria-label="Đóng">×</button>
+      <div class="room-bar">
+        <div id="calm-status" class="cstatus"></div>
+        <label class="chk"><input type="checkbox" id="calm-steps" checked> Hiện các bước làm</label>
+        <button id="calm-new" title="Cuộc trò chuyện mới">Cuộc mới</button>
+      </div>
+      <div id="calm-msgs" class="msgs"></div>
+      <div class="quick">
+        <button data-quick="Đội đang làm gì? Tóm tắt từng người, việc nào đang kẹt, việc nào chờ mình duyệt.">Đội đang làm gì?</button>
+        <button data-quick="/kiem-tra-dinh-ky">Kiểm tra định kỳ</button>
+        <button data-quick="/nhan-feedback">Nhận feedback mới</button>
+        <button data-quick="/bao-cao-ngay">Báo cáo hôm nay</button>
+      </div>
+      <div class="composer">
+        <textarea id="calm-input" rows="2" placeholder="Gõ việc muốn giao cho Calm… (Enter để gửi, Shift+Enter để xuống dòng)"></textarea>
+        <div class="btns">
+          <button id="calm-send" class="send">Gửi</button>
+          <button id="calm-stop" class="stop hidden">Dừng</button>
+        </div>
+      </div>
+      <div id="calm-dirbox" class="dirbox">Thư mục làm việc của Calm: <span id="calm-dir"></span> <button id="calm-setdir" class="mini">Đổi</button></div>
+    </div>
+  </div>
+
+  <!-- Calm hỏi bạn: hiện ngay khi Calm đưa lựa chọn -->
+  <div id="ask-wrap" class="modal-wrap hidden">
+    <div class="backdrop" data-close="ask-wrap"></div>
+    <div class="modal mid">
+      <h2>Calm hỏi bạn</h2>
+      <button class="close" data-close="ask-wrap" aria-label="Đóng">×</button>
+      <div id="ask-body" class="mbody"></div>
+      <div class="mfoot"><button id="ask-other">Trả lời khác trong phòng Calm</button></div>
+    </div>
+  </div>
+
+  <!-- Chi tiết một việc -->
+  <div id="task-wrap" class="modal-wrap hidden">
+    <div class="backdrop" data-close="task-wrap"></div>
+    <div class="modal mid">
+      <h2>Chi tiết việc</h2>
+      <button class="close" data-close="task-wrap" aria-label="Đóng">×</button>
+      <div id="task-body" class="mbody"></div>
+    </div>
+  </div>
+
+  <!-- Nhật ký đầy đủ -->
+  <div id="flog-wrap" class="modal-wrap hidden">
+    <div class="backdrop" data-close="flog-wrap"></div>
+    <div class="modal big">
+      <h2>Nhật ký đầy đủ</h2>
+      <button class="close" data-close="flog-wrap" aria-label="Đóng">×</button>
+      <div class="room-bar">
+        <input id="flog-q" type="search" placeholder="Tìm chữ, mã việc…">
+        <select id="flog-agent"></select>
+        <select id="flog-kind">
+          <option value="">Mọi loại</option><option value="start">Bắt đầu việc</option><option value="handoff">Giao / bàn giao</option>
+          <option value="done">Xong việc</option><option value="approval">Duyệt</option><option value="error">Lỗi</option><option value="info">Khác</option>
+        </select>
+        <span id="flog-count" class="hint"></span>
+      </div>
+      <div id="flog-body" class="mbody flog"></div>
+      <p class="hint">Bấm vào dòng có mã việc để xem chi tiết việc đó.</p>
+    </div>
+  </div>
+
   <div id="toasts"></div>
 
   <aside id="overview" class="panel">
@@ -92,6 +164,7 @@
 
   <aside id="log" class="panel">
     <h2>Nhật ký việc</h2>
+    <button class="expand" id="log-full" title="Xem nhật ký đầy đủ">Xem đầy đủ</button>
     <div id="logbody"></div>
   </aside>
 

@@ -10,6 +10,7 @@ import { OrbitControls } from './vendor/addons/OrbitControls.js';
 import { CSS2DRenderer, CSS2DObject } from './vendor/addons/CSS2DRenderer.js';
 import * as sound from './sound.js';
 import { initSettings, toggleSettings } from './settings.js';
+import { initCalmRoom, onChat, openRoom, openTask, openFullLog, openModal, closeModal } from './phong-calm.js';
 
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -493,13 +494,13 @@ function announce(s) {
   if (more && snd !== 'alert' && sound.settings.events.alert.sound) snd = 'alert';
   if (snd) sound.play(snd);
 }
-const TOAST_ICON = { alert: 'bell', error: 'error', done: 'ok', ok: 'ok', handoff: 'mail', notify: 'play', info: 'mail' };
-function toast(kind, who, text) {
+const TOAST_ICON = { alert: 'bell', error: 'error', done: 'ok', ok: 'ok', handoff: 'mail', notify: 'play', info: 'mail', calm: 'mail' };
+function toast(kind, who, text, onClick) {
   const box = $('#toasts');
   const el = document.createElement('div');
   el.className = 'toast ' + kind;
   el.innerHTML = `<img class="ic" src="${UI}icon-${TOAST_ICON[kind] || 'mail'}.webp" alt=""><div><b>${esc(who)}</b><div>${esc(text)}</div></div>`;
-  el.onclick = () => el.remove();
+  el.onclick = () => { el.remove(); onClick?.(); };
   box.prepend(el);
   while (box.children.length > 4) box.lastChild.remove();
   setTimeout(() => { el.classList.add('out'); setTimeout(() => el.remove(), 400); }, kind === 'alert' ? 9000 : 5000);
@@ -521,7 +522,7 @@ function renderOverview(s) {
     ...s.board.filter(t => t.status === 'waiting_approval').map(t => ({ id: t.id, title: `${t.id}: ${t.title}`, who: t.agent, kind: 'Việc chờ duyệt', ts: t.updatedAt })),
   ];
   $('#approvals').innerHTML = items.length ? items.map(i => `
-    <li><div>${esc(i.title)}</div>
+    <li><div class="${i.kind === 'Việc chờ duyệt' ? 'link' : ''}"${i.kind === 'Việc chờ duyệt' ? ` data-task="${esc(i.id)}"` : ''}>${esc(i.title)}</div>
       <div class="meta">${esc(nameOf(i.who))} · ${esc(i.kind)} · ${hhmm(i.ts)}</div>
       <div class="row"><button class="ok" data-decide="${esc(i.id)}" data-ok="1">Duyệt</button>
       <button class="no" data-decide="${esc(i.id)}" data-ok="0">Từ chối</button></div></li>`).join('')
@@ -529,7 +530,7 @@ function renderOverview(s) {
 
   const list = [...s.board].reverse().slice(0, 30);
   $('#board').innerHTML = list.length ? list.map(t => `
-    <li><span class="tid">${esc(t.id)}</span><span class="ttl" title="${esc(t.title)}">${esc(t.title)}</span>
+    <li class="link" data-task="${esc(t.id)}"><span class="tid">${esc(t.id)}</span><span class="ttl" title="${esc(t.title)}">${esc(t.title)}</span>
       <span class="tag ${t.status}">${statusText[t.status] || t.status}</span></li>`).join('')
     : '<li class="empty">Chưa có việc nào.</li>';
 }
@@ -539,7 +540,8 @@ function renderLog(log) {
   for (const e of [...log].reverse().slice(0, 120)) {
     const d = new Date(e.ts).toLocaleDateString('vi-VN', { weekday: 'long', day: '2-digit', month: '2-digit' });
     if (d !== day) { html += `<div class="day">${esc(d)}</div>`; day = d; }
-    html += `<div class="e ${esc(e.kind)}"><time>${hhmm(e.ts)}</time><span class="who">${esc(nameOf(e.agent))}</span><span class="txt">${esc(e.text)}</span></div>`;
+    const tid = (e.text.match(/\b[A-Z]{2,5}-\d{3,}\b/) || [])[0];
+    html += `<div class="e ${esc(e.kind)}${tid ? ' link' : ''}"${tid ? ` data-task="${tid}"` : ''}><time>${hhmm(e.ts)}</time><span class="who">${esc(nameOf(e.agent))}</span><span class="txt">${esc(e.text)}</span></div>`;
   }
   $('#logbody').innerHTML = html || '<div class="empty">Chưa có nhật ký.</div>';
 }
@@ -555,7 +557,7 @@ function renderDetail(id) {
     <h3>Đang làm</h3>
     <div class="now"><b>${stateText[a.state] || a.state}</b>${a.task ? ' · ' + esc(a.task) : ''}<br>${esc(a.bubble)}</div>
     <h3>Việc gần đây</h3>
-    ${tasks.length ? '<ul>' + tasks.map(t => `<li>${esc(t.id)}: ${esc(t.title)} <span class="tag ${t.status}">${statusText[t.status] || t.status}</span></li>`).join('') + '</ul>' : '<div class="empty">Chưa có.</div>'}
+    ${tasks.length ? '<ul>' + tasks.map(t => `<li class="link" data-task="${esc(t.id)}">${esc(t.id)}: ${esc(t.title)} <span class="tag ${t.status}">${statusText[t.status] || t.status}</span></li>`).join('') + '</ul>' : '<div class="empty">Chưa có.</div>'}
     <h3>Thao tác vừa rồi</h3>
     ${a.tools.length ? '<ul>' + a.tools.slice(0, 6).map(t => `<li>${hhmm(t.ts)} ${esc(t.text)}</li>`).join('') + '</ul>' : '<div class="empty">Chưa có.</div>'}
     <h3>File dùng</h3>
@@ -590,6 +592,7 @@ const toggles = {
   log: b => b.classList.toggle('on', !$('#log').classList.toggle('hidden')),
   demo: () => post('/api/demo', { on: !state?.settings.demo }),
   sound: () => toggleSettings(),
+  calm: () => openRoom(),
   approve1: () => {
     if (!state) return;
     const first = state.approvals[0]?.id || state.board.find(t => t.status === 'waiting_approval')?.id;
@@ -600,6 +603,11 @@ document.querySelectorAll('[data-act]').forEach(b => b.addEventListener('click',
 
 // Bảng cài đặt thông báo; icon loa trên thanh công cụ đổi theo tắt/mở tiếng
 initSettings();
+initCalmRoom({
+  getState: () => state, nameOf, toast,
+  onUnread: n => { $('#calm-badge').textContent = n; $('#calm-badge').classList.toggle('hidden', !n); },
+});
+$('#log-full').onclick = () => openFullLog();
 const syncSoundIcon = () => { $('#btn-sound img').src = UI + (sound.settings.muted ? 'icon-mute.webp' : 'icon-sound.webp'); };
 sound.onChange(syncSoundIcon);
 syncSoundIcon();
@@ -637,6 +645,7 @@ function connect() {
   const es = new EventSource('/events');
   es.onopen = () => $('#conn').classList.remove('off');
   es.onmessage = e => apply(JSON.parse(e.data));
+  es.addEventListener('chat', e => onChat(JSON.parse(e.data)));
   es.onerror = () => { $('#conn').classList.add('off'); $('#subtitle').textContent = 'Mất kết nối server, đang thử lại…'; };
 }
 window.__town = { openDetail, people, houses, toast };

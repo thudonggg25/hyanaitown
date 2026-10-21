@@ -4,6 +4,7 @@
   "port": 4545,
   "taskPrefix": "HLP",
   "approvalHoldSeconds": 60,
+  "calm": { "dir": "C:/Users/hyang/Calm" },
   "boss": {
     "id": "calm",
     "name": "Calm",
