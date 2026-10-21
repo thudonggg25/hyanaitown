@@ -94,12 +94,84 @@ function clampView() {
 // ---------- Ảnh ----------
 const loader = new THREE.TextureLoader();
 const maskCache = new Map(); // ảnh -> mặt nạ alpha nhỏ để bấm trúng đúng hình, không trúng nền trong
-function loadTex(file) {
+function loadTex(file, clean) {
   return new Promise(res => loader.load(SPR + file, t => {
+    if (clean) { t.image = cleanSprite(t.image); t.needsUpdate = true; }
     t.colorSpace = THREE.SRGBColorSpace;
     t.anisotropy = 4;
     res(t);
   }, undefined, () => res(null)));
+}
+
+// Ảnh nhân vật còn sót nền trắng lúc tách nền: mảng trắng dưới chân, viền trắng mờ,
+// và mẩu vụn của hình bên cạnh. Lọc một lần trên canvas trước khi đưa lên GPU.
+function cleanSprite(img) {
+  const W = img.width, H = img.height;
+  const c = document.createElement('canvas'); c.width = W; c.height = H;
+  const g = c.getContext('2d', { willReadFrequently: true });
+  g.drawImage(img, 0, 0);
+  const id = g.getImageData(0, 0, W, H), d = id.data, N = W * H;
+  const whitish = i => {
+    const r = d[i * 4], gg = d[i * 4 + 1], b = d[i * 4 + 2];
+    return Math.min(r, gg, b) > 200 && Math.max(r, gg, b) - Math.min(r, gg, b) < 40;
+  };
+  // 1) Loang từ vùng trong suốt qua các điểm trắng/nhạt: nét viền đậm của tranh sẽ chặn lại
+  const seen = new Uint8Array(N), q = new Int32Array(N);
+  let qh = 0, qt = 0;
+  for (let i = 0; i < N; i++) if (d[i * 4 + 3] < 8) { seen[i] = 1; q[qt++] = i; }
+  while (qh < qt) {
+    const i = q[qh++], x = i % W;
+    for (const j of [i - 1, i + 1, i - W, i + W]) {
+      if (j < 0 || j >= N || seen[j] || (j === i - 1 && x === 0) || (j === i + 1 && x === W - 1)) continue;
+      seen[j] = 1;
+      if (whitish(j) || (d[j * 4 + 3] < 140 && Math.min(d[j * 4], d[j * 4 + 1], d[j * 4 + 2]) > 160)) { d[j * 4 + 3] = 0; q[qt++] = j; }
+    }
+  }
+  // 1a) Lỗ nền trắng tinh bị kẹt giữa tóc hay giữa hai chân (không chạm vùng trong suốt)
+  const pure = i => d[i * 4 + 3] > 0 && Math.min(d[i * 4], d[i * 4 + 1], d[i * 4 + 2]) > 232
+    && Math.max(d[i * 4], d[i * 4 + 1], d[i * 4 + 2]) - Math.min(d[i * 4], d[i * 4 + 1], d[i * 4 + 2]) < 14;
+  const hole = new Uint8Array(N);
+  for (let s = 0; s < N; s++) {
+    if (hole[s] || !pure(s)) continue;
+    qh = qt = 0; q[qt++] = s; hole[s] = 1;
+    while (qh < qt) {
+      const i = q[qh++], x = i % W;
+      for (const j of [i - 1, i + 1, i - W, i + W]) {
+        if (j < 0 || j >= N || hole[j] || (j === i - 1 && x === 0) || (j === i + 1 && x === W - 1) || !pure(j)) continue;
+        hole[j] = 1; q[qt++] = j;
+      }
+    }
+    if (qt >= 25) for (let n = 0; n < qt; n++) d[q[n] * 4 + 3] = 0;
+  }
+  // 1b) Gọt thêm một lớp viền sáng còn sót sát mép
+  const edge = [];
+  for (let i = 0; i < N; i++) {
+    if (d[i * 4 + 3] === 0) continue;
+    const x = i % W;
+    const out = (x > 0 && d[(i - 1) * 4 + 3] === 0) || (x < W - 1 && d[(i + 1) * 4 + 3] === 0)
+      || (i >= W && d[(i - W) * 4 + 3] === 0) || (i < N - W && d[(i + W) * 4 + 3] === 0);
+    const r = d[i * 4], gg = d[i * 4 + 1], b = d[i * 4 + 2];
+    if (out && Math.min(r, gg, b) > 150 && Math.max(r, gg, b) - Math.min(r, gg, b) < 60) edge.push(i);
+  }
+  for (const i of edge) d[i * 4 + 3] = 0;
+  // 2) Bỏ mẩu vụn: trong mỗi ô chỉ giữ các mảng đủ lớn so với mảng lớn nhất
+  const lab = new Int32Array(N).fill(-1), sizes = [];
+  for (let s = 0; s < N; s++) {
+    if (lab[s] >= 0 || d[s * 4 + 3] === 0) continue;
+    const L = sizes.length; let n = 0; qh = qt = 0; q[qt++] = s; lab[s] = L;
+    while (qh < qt) {
+      const i = q[qh++], x = i % W; n++;
+      for (const j of [i - 1, i + 1, i - W, i + W]) {
+        if (j < 0 || j >= N || lab[j] >= 0 || d[j * 4 + 3] === 0 || (j === i - 1 && x === 0) || (j === i + 1 && x === W - 1)) continue;
+        lab[j] = L; q[qt++] = j;
+      }
+    }
+    sizes.push(n);
+  }
+  const biggest = Math.max(1, ...sizes);
+  for (let i = 0; i < N; i++) if (lab[i] >= 0 && sizes[lab[i]] < biggest * 0.04) d[i * 4 + 3] = 0;
+  g.putImageData(id, 0, 0);
+  return c;
 }
 function alphaMask(tex) {
   if (!tex?.image) return null;
@@ -232,7 +304,7 @@ function buildPerson(a) {
   const p = { group: g, body, shadow, nameTag, bubble, bubbleDiv, data: a, H, W, phase: Math.random() * 6,
     route: [], pos: null, dir: { x: 0, y: 1 }, walking: false, sprite: null, pose: 'front', flip: false, goal: null };
   people[a.id] = p;
-  (charTex[cid] ||= loadTex(info.file)).then(base => {
+  (charTex[cid] ||= loadTex(info.file, true)).then(base => {
     if (!base) return;
     const tex = base.clone(); // dùng chung ảnh, mỗi người một khung hình riêng
     tex.repeat.set(1 / info.poses.length, 1);
@@ -494,32 +566,47 @@ function stepPerson(p, dt, t) {
       else planWander(p, t);
     }
   }
-  let moving = false;
+  // Vận tốc đổi dần (tăng tốc, giảm tốc, ôm cua) thay vì giật theo đường thẳng
+  const v = p.vel ||= { x: 0, y: 0 };
+  let tx = 0, ty = 0;
   while (p.route.length) {
-    const w = p.route[0];
+    const w = p.route[0], lastPt = p.route.length === 1;
     const dx = w.x - p.pos.x, dy = w.y - p.pos.y, d = Math.hypot(dx, dy);
-    if (d < 1) { p.pos.x = w.x; p.pos.y = w.y; p.route.shift(); continue; }
-    const s = Math.min(d, (p.speed || SPEED) * dt);
-    p.pos.x += dx / d * s; p.pos.y += dy / d * s;
-    p.dir.x = dx / d; p.dir.y = dy / d;
-    moving = true;
+    if (d < (lastPt ? 1.5 : 14)) {
+      if (lastPt) { p.pos.x = w.x; p.pos.y = w.y; v.x = v.y = 0; }
+      p.route.shift(); continue;
+    }
+    const sp = (p.speed || SPEED) * (lastPt ? Math.min(1, 0.25 + d / 40) : 1);
+    tx = dx / d * sp; ty = dy / d * sp;
     break;
   }
+  const k = 1 - Math.exp(-dt * (p.route.length ? 5 : 12));
+  v.x += (tx - v.x) * k; v.y += (ty - v.y) * k;
+  p.pos.x += v.x * dt; p.pos.y += v.y * dt;
+  const sp = Math.hypot(v.x, v.y);
+  const moving = sp > 6;
   p.walking = moving;
   const b = p.body;
   if (moving) {
-    // 2 khung bước luân phiên; đi lên thì quay lưng, đi xuống thì nhìn thẳng
-    const step = Math.floor((t + p.phase) * 6) % 2;
+    p.dir.x = v.x / sp; p.dir.y = v.y / sp;
+    // Nhịp bước theo tốc độ; hướng chỉ đổi khi lệch rõ để không chớp hình
+    p.stride = (p.stride || 0) + dt * (1.6 + sp / 40);
     const ax = Math.abs(p.dir.x), ay = Math.abs(p.dir.y) * 1.6;
-    if (ay > ax) setPose(p, p.dir.y < 0 ? 'back' : 'front', step === 1);
-    else if (p.dir.x > 0) setPose(p, step ? 'walk' : 'left', !step);
-    else setPose(p, step ? 'walk' : 'left', !!step);
-    b.position.y = Math.abs(Math.sin((t + p.phase) * 12)) * 5;
-    b.scale.set(1, 1, 1);
+    const vertical = p.facing === 'v' ? ay > ax * 0.7 : ay > ax * 1.4;
+    p.facing = vertical ? 'v' : 'h';
+    const step = Math.floor(p.stride * 2) % 2;
+    if (vertical) setPose(p, p.dir.y < 0 ? 'back' : 'front', false);
+    else setPose(p, step ? 'walk' : 'left', p.dir.x > 0 ? !step : !!step);
+    const ph = p.stride * Math.PI * 2;
+    b.position.y = Math.abs(Math.sin(ph)) * 3;
+    b.rotation.z = Math.sin(ph) * (vertical ? 0.06 : 0.03);
+    b.scale.set(1, 1 - Math.abs(Math.sin(ph)) * 0.02, 1);
   } else {
+    p.facing = null;
     setPose(p, 'front', false);
     b.position.y = st === 'working' ? Math.abs(Math.sin(t * 7 + p.phase)) * 3
       : st === 'waiting' ? Math.abs(Math.sin(t * 3.2)) * 10 : 0;
+    b.rotation.z *= 1 - k;
     const breathe = 1 + Math.sin(t * 2 + p.phase) * 0.012;
     b.scale.set(1 / breathe, breathe, 1);
   }
