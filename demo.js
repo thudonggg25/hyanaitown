@@ -1,13 +1,13 @@
-// Chế độ "Tự chạy": giả lập một quy trình marketing bằng đúng các sự kiện hooks
+// Chế độ "Tự chạy": giả lập một vòng vận hành Helper bằng đúng các sự kiện hooks
 // mà Claude Code gửi, để xem thị trấn hoạt động khi chưa nối Claude Code.
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 let running = false;
 
-const topics = [
-  'Video 30s: 3 mẹo pha matcha tại nhà',
-  'Bài đăng: review bình giữ nhiệt mùa đông',
-  'Chuỗi 5 bài: chăm cây trong văn phòng',
+const items = [
+  { kind: 'bug', title: 'Lỗi: nút Lưu ở Thu chi không phản hồi trên iPhone', ui: true },
+  { kind: 'idea', title: 'Đề xuất: lọc công việc theo nhóm trên Trang chủ' },
+  { kind: 'bug', title: 'Lỗi: nhắc việc Telegram gửi trùng hai lần', ui: false },
 ];
 
 async function runDemo({ handleHook, api, isOn }) {
@@ -31,52 +31,61 @@ async function runDemo({ handleHook, api, isOn }) {
   }
 
   try {
-    let i = 0;
-    while (isOn()) {
-      const topic = topics[i++ % topics.length];
-      ev('UserPromptSubmit', { prompt: topic });
-      await step(2000);
-      await delegate('nghien-cuu', `Nghiên cứu: ${topic}`, [
-        ['Skill', { skill: 'research-competitors' }],
-        ['WebSearch', { query: topic.split(':').pop().trim() }],
-        ['Write', { file_path: 'research/PAIN_BOARD.md' }],
-      ]);
-      await delegate('viet-bai', `Viết kịch bản: ${topic}`, [
-        ['Read', { file_path: 'research/PAIN_BOARD.md' }],
-        ['Skill', { skill: 'topic-blueprint' }],
-        ['Write', { file_path: 'drafts/kich-ban.md' }],
-      ]);
-      await delegate('thiet-ke', 'Lên ảnh bìa', [
-        ['Read', { file_path: 'drafts/kich-ban.md' }],
-        ['Write', { file_path: 'design/anh-bia.md' }],
-      ]);
-      await delegate('qa', 'Kiểm tra kịch bản + ảnh bìa', [
-        ['Read', { file_path: 'drafts/kich-ban.md' }],
-        ['Skill', { skill: 'qa-check' }],
-      ]);
-
-      // Cổng duyệt: chờ bạn bấm Duyệt (demo tự duyệt sau 30 giây)
-      const t = api.needApproval(`Duyệt đăng: ${topic}`, 'qa');
+    let i = 0, coder = 0;
+    // Chờ bạn bấm Duyệt trên trang (demo tự duyệt sau 30 giây). Trả về false nếu bị từ chối.
+    async function gate(title, agent) {
+      const t = api.needApproval(title, agent);
       const t0 = Date.now();
       while (api.task(t.id).status === 'waiting_approval' && Date.now() - t0 < 30000) await step(800);
-      if (api.task(t.id).status === 'rejected') { ev('Stop'); await step(4000); continue; }
+      if (api.task(t.id).status === 'rejected') return false;
       if (api.task(t.id).status === 'waiting_approval') {
         api.task(t.id).status = 'approved';
         ev('Notification', { message: `Demo tự duyệt ${t.id} sau 30 giây` });
       }
+      return true;
+    }
+    async function code(item) {
+      const who = `coder-${(coder++ % 3) + 1}`;
+      await delegate(who, item.kind === 'bug' ? `Sửa: ${item.title.replace(/^Lỗi: /, '')}` : `Làm: ${item.title.replace(/^Đề xuất: /, '')}`, [
+        ['Skill', { skill: item.kind === 'bug' ? 'sua-loi' : 'lam-tinh-nang' }],
+        ['Grep', { pattern: 'onSave' }],
+        ['Edit', { file_path: 'projects/wt/' + who + '/components/fund-txn-form.tsx' }],
+        ['Bash', { description: 'Chạy test', command: 'node --test lib/*.test.mjs' }],
+      ]);
+      if (item.ui !== false) await delegate('thiet-ke', 'Soát cỡ chữ, nút, icon', [
+        ['Skill', { skill: 'soat-thiet-ke' }],
+        ['Read', { file_path: 'design/QUY-CHUAN-HELPER.md' }],
+      ]);
+      await delegate('qa', 'Kiểm tra nhánh trước khi gửi Hyan', [
+        ['Skill', { skill: 'kiem-tra-pr' }],
+        ['Bash', { description: 'Chạy test + build', command: 'npx tsc --noEmit' }],
+      ]);
+      if (await gate(`Duyệt gộp: ${item.title}`, 'qa'))
+        ev('PreToolUse', { tool_name: 'mcp__linear__create_comment', tool_input: { body: 'Đã sửa xong, sẽ có trong bản tới' } });
+    }
 
-      await delegate('dang-bai', `Lên lịch đăng: ${topic}`, [
-        ['Skill', { skill: 'schedule-post' }],
-        ['Bash', { description: 'Đặt lịch đăng 19:00' }],
+    while (isOn()) {
+      const item = items[i++ % items.length];
+      ev('UserPromptSubmit', { prompt: '/nhan-feedback' });
+      await step(2000);
+      await delegate('tiep-nhan', 'Phân loại feedback mới trên Linear', [
+        ['mcp__linear__list_issues', { query: 'Feedback Helper Web' }],
+        ['Skill', { skill: 'phan-loai-feedback' }],
+        ['Write', { file_path: 'intake/hom-nay.md' }],
       ]);
-      await delegate('so-lieu', 'Đo số liệu bài hôm qua', [
-        ['WebFetch', { url: 'https://example.com/stats' }],
-        ['Write', { file_path: 'reports/tuan-nay.md' }],
-      ]);
-      await delegate('tra-loi', 'Trả lời 12 comment mới', [
-        ['Skill', { skill: 'reply-comments' }],
-        ['Write', { file_path: 'replies/hom-nay.md' }],
-      ]);
+      if (item.kind === 'bug') await code(item);
+      else {
+        await delegate('san-pham', `Chấm điểm: ${item.title}`, [
+          ['Skill', { skill: 'danh-gia-de-xuat' }],
+          ['Write', { file_path: 'proposals/de-xuat.md' }],
+        ]);
+        await delegate('anicca', 'Debate đề xuất với GPT và Gemini', [
+          ['Skill', { skill: 'debate' }],
+          ['Bash', { description: 'Hỏi GPT và Gemini', command: 'node .claude/town/debate.js' }],
+          ['Write', { file_path: 'debate/bao-cao.md' }],
+        ]);
+        if (await gate(`Duyệt nhận làm: ${item.title}`, 'calm')) await code(item);
+      }
       ev('Stop');
       await step(6000);
     }

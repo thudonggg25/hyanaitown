@@ -22,15 +22,24 @@ hyan xem một clip TikTok "Thị trấn solomi – mini AI marketing agent team
   - Duyệt việc: `claude-template/.claude/town/board.js duyet "..."` tạo việc "Chờ duyệt" và chờ tới khi người dùng bấm.
 - `demo.js`: nút Tự chạy giả lập cả quy trình bằng đúng sự kiện hooks thật.
 - `web/`: three.js r169 kèm sẵn (`web/vendor`), camera chéo, nhà và nhân vật dựng bằng khối, bảng Tổng quan / Nhật ký / chi tiết agent, giao diện điện thoại.
-- `claude-template/`: 7 agent, 9 skill, hooks trong `.claude/settings.json`, `CLAUDE.md` cho Điều phối với cổng duyệt.
+- `claude-template/`: lúc đầu 7 agent marketing; từ bản 0.2 là đội Helper (xem dưới).
 - Đã chạy thử với Claude Code CLI thật: giao việc → bàn giao → QA gửi duyệt đều hiện đúng trên trang.
+
+## Bản 0.2 (21/10/2026): đội vận hành Helper
+
+hyan chốt: làm **web game** three.js (không làm client riêng), đội AI đầu tiên vận hành App Helper (repo thudonggg25/helper-web, Next/vinext trên Cloudflare). Kế hoạch: https://claude.ai/artifact/TKTkVRDM6i1pbFjALf8SZP
+
+- Calm (phiên chính, boss) điều phối; Anicca (đối ngoại, debate GPT + Gemini qua `.claude/town/debate.js`, cần API key); Tiếp nhận (Linear view "Feedback Helper Web", workspace keepember); Sản phẩm; Thiết kế (`design/QUY-CHUAN-HELPER.md`); Coder 1-3 (git worktree `projects/wt/coder-N`, nhánh `calm/...`); QA.
+- Calm được bình luận và đổi trạng thái trên Linear. 3 cổng duyệt của hyan: nhận làm tính năng mới, gộp vào main, đăng bản.
+- Lịch: Task Scheduler trên PC trước (`lich/`), 1-2 tuần sau chuyển lên VPS (hyan đồng ý thuê nếu cần).
 
 ## Việc tiếp theo (gợi ý)
 
-1. hyan chạy thử trên máy (bấm `chay-thi-tran.bat`) và chốt phòng ban.
-2. Thay khối bằng mô hình Kenney (City Kit, Mini Characters) / KayKit dạng glTF. Lưu ý: máy cloud của Claude không tải được trang kenney.nl, cần tải trên máy hyan hoặc nguồn khác.
-3. Hiệu ứng đẹp hơn: đường đi vòng theo đường lát, cầm phong bì khi bàn giao, ngày/đêm.
-4. Nhiều phiên Claude Code cùng lúc (tách theo `session_id`).
+1. hyan chạy thử đội Helper trên PC, đăng nhập Linear qua `/mcp`, lấy API key OpenAI + Gemini cho Anicca.
+2. Đồ họa: hyan làm moodboard + ảnh GPT theo prompt trong kế hoạch, tải mô hình Kenney / KayKit glTF; Claude lắp vào (máy cloud không tải được kenney.nl).
+3. Xưởng Code thành một toà to có nhiều bàn thay vì 3 nhà riêng; nhân vật Hyan đi lại được để có cảm giác game.
+4. Hiệu ứng: đường đi vòng theo đường lát, cầm phong bì khi bàn giao, ngày/đêm. Giảm khung hình khi tab ẩn.
+5. Nhiều phiên Claude Code cùng lúc (tách theo `session_id`), cần khi chạy lịch song song với phiên tay.
 
 ## Quy tắc
 

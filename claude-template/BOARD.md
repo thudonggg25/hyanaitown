@@ -2,6 +2,9 @@
 
 ## Đang làm
 
-## Chờ duyệt
+| Mã | Việc | Phòng | Linear | Nhánh |
+|---|---|---|---|---|
+
+## Chờ Hyan duyệt
 
 ## Xong
