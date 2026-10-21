@@ -338,10 +338,14 @@ function buildPerson(a) {
   return p;
 }
 
-// Đổi dáng có "xoay người": bóp hẹp hình lại, đổi khung ở giữa chừng, rồi nở ra.
-// Không lật gương tức thì nên không còn chớp hình.
-const TURN_TIME = 0.17;
+// Đổi hướng kiểu game 2D: thay khung hình ngay, không bóp méo hình (bóp trông như tờ giấy).
+// Quay ngược hẳn lại (trái ↔ phải, lên ↔ xuống) thì đi qua một khung ở giữa thật nhanh,
+// như người quay người thật, kèm nhún nhẹ một cái.
+const TURN_MID = 0.075;
 const samePose = (a, b) => a && b && a.pose === b.pose && a.flip === b.flip;
+const faceOf = w => w.pose === 'front' ? 'down' : w.pose === 'back' ? 'up'
+  : w.pose === 'left' ? (w.flip ? 'right' : 'left') : (w.flip ? 'left' : 'right');
+const OPPOSITE = { left: 'right', right: 'left', up: 'down', down: 'up' };
 function setPose(p, pose, flip) { p.want = { pose, flip }; }
 function showPose(p, w) {
   p.shown = { ...w };
@@ -350,15 +354,20 @@ function showPose(p, w) {
   t.offset.x = POSE[w.pose] / n;
 }
 function animTurn(p, dt) {
-  if (!p.sprite) return 1;
-  if (!p.turn && !samePose(p.shown, p.want)) p.turn = { t: 0, swapped: false };
-  if (!p.turn) return 1;
-  const tr = p.turn;
-  tr.t += dt / TURN_TIME;
-  if (!tr.swapped && tr.t >= 0.5) { showPose(p, p.want); tr.swapped = true; }
-  if (tr.t >= 1) { p.turn = null; return 1; }
-  const e = Math.abs(Math.cos(Math.PI * tr.t)); // 1 → 0 → 1
-  return 0.12 + 0.88 * e * e * (3 - 2 * e);
+  if (!p.sprite) return;
+  if (p.turn) {
+    p.turn.t += dt;
+    if (p.turn.t < TURN_MID) return;
+    p.turn = null;
+  }
+  if (samePose(p.shown, p.want)) return;
+  const from = p.shown && faceOf(p.shown), to = faceOf(p.want);
+  p.kick = 1;
+  if (from && OPPOSITE[from] === to) {
+    // khung giữa: quay mặt ra phía người xem khi đổi trái/phải, nghiêng khi đổi lên/xuống
+    showPose(p, from === 'left' || from === 'right' ? { pose: 'front', flip: false } : { pose: 'left', flip: to === 'up' });
+    p.turn = { t: 0 };
+  } else showPose(p, p.want);
 }
 
 // Chỗ đứng: trước cửa nhà mình, hoặc cạnh cửa nhà đang tới bàn giao
@@ -710,7 +719,8 @@ function stepPerson(p, dt, t) {
     } else p.look = null;
     setPose(p, p.look?.pose || 'front', !!p.look?.flip);
   }
-  const turnF = animTurn(p, dt);
+  animTurn(p, dt);
+  p.kick = (p.kick || 0) * Math.exp(-dt * 14);
 
   // Bước đi giả bằng chuyển động: nhấp nhô, bẹp lúc chạm đất, vươn lúc nhấc chân,
   // lắc nhẹ hai bên và ngả người theo hướng đi
@@ -742,13 +752,14 @@ function stepPerson(p, dt, t) {
     else if (h > 0.88) sq -= 0.05 * Math.sin(Math.PI * (h - 0.88) / 0.12);
   }
   sq += Math.sin(t * 2 + p.phase) * 0.012 * (1 - g); // thở
+  sq -= (p.kick || 0) * 0.035; bob += (p.kick || 0) * 1.5; // nhún nhẹ khi đổi hướng
   if (p.stopAt) { const ts = t - p.stopAt; if (ts < 0.6) sq -= 0.05 * Math.exp(-ts * 8) * Math.cos(ts * 20); }
 
   const b = p.body;
   const sy = 1 + sq;
   b.position.y = bob;
   b.rotation.z += (rot - b.rotation.z) * (1 - Math.exp(-dt * 14));
-  b.scale.set((1 - sq * 0.8) * turnF, sy, 1);
+  b.scale.set(1 - sq * 0.8, sy, 1);
   if (p.sprite) { p.sprite.scale.x = flip ? -1 : 1; p.sprite.visible = !walkSheet; }
   if (p.walkSprite) {
     const ws = p.walkSprite;
