@@ -52,3 +52,11 @@ hyan chốt: làm **web game** three.js (không làm client riêng), đội AI �
 - Toạ độ ô đất, quảng trường trong `PLOTS` / `PLAZA` ở đầu `web/app.js` (pixel ảnh 1920×1080). 3 Coder ở chung "Xưởng Code".
 - Nhân vật: bảng 4 dáng (thẳng, lưng, nghiêng trái, bước phải) cắt thành sprite sheet; đi bộ bằng 2 khung luân phiên + lật ngang, đi vòng qua quảng trường.
 - Sprite tạo lại bằng `python3 tools/lam_sprite.py` (Pillow + numpy): xoá nền trắng bằng loang màu từ mép, ra `web/assets/sprites/`.
+
+## Bản 0.4 (21/10/2026): chuyển động, âm thanh, prompt vẽ
+
+- hyan chốt: tranh phẳng vẽ tay, camera không xoay. Đã thử 3D và 2.5D nghiêng, hyan không thích, đừng làm lại.
+- Chuyển động (`stepPerson` trong `web/app.js`): bước đếm theo quãng đường (`STEP_LEN`), nhún, bẹp/vươn, ngả người theo hướng đi; đổi dáng bằng "xoay người" (bóp hẹp rồi nở, `TURN_TIME`) thay vì lật gương tức thì. Rảnh thì ngó nghiêng, chờ duyệt thì nhảy.
+- Dáng đi nhiều khung: thêm `walk: { file, cols, rows: ['down','up','left','right'] }` vào nhân vật trong `sprites.json` là game tự dùng (thiếu hàng `right` thì lật hàng `left`).
+- Âm thanh `web/sound.js`: Web Audio tự tạo (tin mới, cần duyệt, lỗi, xong việc, bàn giao, nhạc nền lo-fi), nút 🔊 có âm lượng, nhớ trong localStorage. Tiếng gắn với nhật ký thật (`announce` trong app.js), kèm thông báo nổi.
+- Prompt GPT cho walk cycle và UI: `docs/PROMPT-GPT.md`. Ảnh hyan gửi lại phải commit vào repo, không để trong project files (ảnh lớn làm treo phiên).

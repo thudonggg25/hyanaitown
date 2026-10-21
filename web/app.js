@@ -8,6 +8,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from './vendor/addons/OrbitControls.js';
 import { CSS2DRenderer, CSS2DObject } from './vendor/addons/CSS2DRenderer.js';
+import * as sound from './sound.js';
 
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -302,7 +303,9 @@ function buildPerson(a) {
   scene.add(g);
 
   const p = { group: g, body, shadow, nameTag, bubble, bubbleDiv, data: a, H, W, phase: Math.random() * 6,
-    route: [], pos: null, dir: { x: 0, y: 1 }, walking: false, sprite: null, pose: 'front', flip: false, goal: null };
+    route: [], pos: null, dir: { x: 0, y: 1 }, walking: false, sprite: null, walkSprite: null,
+    want: { pose: 'front', flip: false }, shown: null, turn: null, goal: null,
+    stride: 0, gait: 0, look: null, hop: 0, settle: 0 };
   people[a.id] = p;
   (charTex[cid] ||= loadTex(info.file, true)).then(base => {
     if (!base) return;
@@ -314,17 +317,47 @@ function buildPerson(a) {
     body.add(sprite);
     clickable.push(sprite);
     p.sprite = sprite;
-    setPose(p, p.pose, p.flip, true);
+    showPose(p, p.want);
+  });
+  // Bảng dáng đi nhiều khung (nếu đã có ảnh): mỗi hàng một hướng, mỗi cột một khung
+  const wk = info.walk;
+  if (wk) (charTex[cid + ':walk'] ||= loadTex(wk.file, true)).then(base => {
+    if (!base) return;
+    const tex = base.clone();
+    tex.repeat.set(1 / wk.cols, 1 / wk.rows.length);
+    const ww = H * (base.image.width / wk.cols) / (base.image.height / wk.rows.length);
+    const ws = spriteMesh(tex, ww, H);
+    ws.userData.agentId = a.id;
+    ws.userData.mask = alphaMask(base);
+    ws.visible = false;
+    body.add(ws);
+    clickable.push(ws);
+    p.walkSprite = ws;
   });
   return p;
 }
 
-function setPose(p, pose, flip, force) {
-  if (!p.sprite || (!force && p.pose === pose && p.flip === flip)) { p.pose = pose; p.flip = flip; return; }
-  p.pose = pose; p.flip = flip;
-  const t = p.sprite.material.map, n = 4, i = POSE[pose];
-  t.repeat.x = flip ? -1 / n : 1 / n;
-  t.offset.x = flip ? (i + 1) / n : i / n;
+// Đổi dáng có "xoay người": bóp hẹp hình lại, đổi khung ở giữa chừng, rồi nở ra.
+// Không lật gương tức thì nên không còn chớp hình.
+const TURN_TIME = 0.17;
+const samePose = (a, b) => a && b && a.pose === b.pose && a.flip === b.flip;
+function setPose(p, pose, flip) { p.want = { pose, flip }; }
+function showPose(p, w) {
+  p.shown = { ...w };
+  if (!p.sprite) return;
+  const t = p.sprite.material.map, n = 4;
+  t.offset.x = POSE[w.pose] / n;
+}
+function animTurn(p, dt) {
+  if (!p.sprite) return 1;
+  if (!p.turn && !samePose(p.shown, p.want)) p.turn = { t: 0, swapped: false };
+  if (!p.turn) return 1;
+  const tr = p.turn;
+  tr.t += dt / TURN_TIME;
+  if (!tr.swapped && tr.t >= 0.5) { showPose(p, p.want); tr.swapped = true; }
+  if (tr.t >= 1) { p.turn = null; return 1; }
+  const e = Math.abs(Math.cos(Math.PI * tr.t)); // 1 → 0 → 1
+  return 0.12 + 0.88 * e * e * (3 - 2 * e);
 }
 
 // Chỗ đứng: trước cửa nhà mình, hoặc cạnh cửa nhà đang tới bàn giao
@@ -382,6 +415,7 @@ function apply(s) {
     p.nameTag.element.style.visibility = (a.isBoss || a.isGuest || a.at !== a.home || houseOf(a.id) !== a.id) ? '' : 'hidden';
     p.bubbleDiv.style.display = a.bubble ? '' : 'none';
   }
+  announce(s);
   renderOverview(s);
   renderLog(s.log);
   if (selected) renderDetail(selected);
@@ -389,6 +423,49 @@ function apply(s) {
   $('#btn-demo').textContent = s.settings.demo ? 'Dừng tự chạy' : 'Tự chạy';
   const pending = s.approvals.length + s.board.filter(t => t.status === 'waiting_approval').length;
   $('#btn-approve1').disabled = pending === 0;
+}
+
+// ---------- Tiếng báo + thông báo nổi theo sự kiện thật ----------
+// So nhật ký mới với lần trước: mục nào mới thì kêu đúng loại tiếng
+const seenLog = new Set();
+const logKey = e => e.ts + '|' + e.agent + '|' + e.text;
+let firstState = true, lastPending = 0;
+function announce(s) {
+  const fresh = [];
+  for (const e of s.log) if (!seenLog.has(logKey(e))) { seenLog.add(logKey(e)); fresh.push(e); }
+  if (seenLog.size > 2000) { seenLog.clear(); for (const e of s.log) seenLog.add(logKey(e)); }
+  const pending = s.approvals.length + s.board.filter(t => t.status === 'waiting_approval').length;
+  const more = pending > lastPending;
+  lastPending = pending;
+  if (firstState) { firstState = false; return; } // mở trang thì không kêu lại chuyện cũ
+  // Nhiều sự kiện cùng lúc thì chỉ kêu tiếng quan trọng nhất
+  const rank = { notify: 0, ok: 1, handoff: 2, done: 3, error: 4, alert: 5 };
+  let snd = null;
+  const want = n => { if (snd === null || rank[n] > rank[snd]) snd = n; };
+  for (const e of fresh) {
+    const who = nameOf(e.agent);
+    if (e.kind === 'error') { want('error'); toast('error', who, e.text); }
+    else if (e.kind === 'done') { want('done'); if (/^Xong /.test(e.text)) toast('done', who, e.text); }
+    else if (e.kind === 'handoff') want('handoff');
+    else if (e.kind === 'start') want('notify');
+    else if (e.kind === 'approval') {
+      if (/^(Xin quyền|Gửi )/.test(e.text)) toast('alert', who, e.text);
+      else if (/duyệt/.test(e.text) && !/từ chối/.test(e.text)) want('ok');
+    }
+  }
+  if (more) want('alert');
+  if (snd) sound.play(snd);
+}
+const TOAST_ICON = { alert: '!', error: '×', done: '✓', info: 'i' };
+function toast(kind, who, text) {
+  const box = $('#toasts');
+  const el = document.createElement('div');
+  el.className = 'toast ' + kind;
+  el.innerHTML = `<span class="ic">${TOAST_ICON[kind] || 'i'}</span><div><b>${esc(who)}</b><div>${esc(text)}</div></div>`;
+  el.onclick = () => el.remove();
+  box.prepend(el);
+  while (box.children.length > 4) box.lastChild.remove();
+  setTimeout(() => { el.classList.add('out'); setTimeout(() => el.remove(), 400); }, kind === 'alert' ? 9000 : 5000);
 }
 
 const nameOf = id => state?.agents.find(a => a.id === id)?.name || id;
@@ -475,13 +552,31 @@ const toggles = {
   overview: b => b.classList.toggle('on', !$('#overview').classList.toggle('hidden')),
   log: b => b.classList.toggle('on', !$('#log').classList.toggle('hidden')),
   demo: () => post('/api/demo', { on: !state?.settings.demo }),
+  sound: b => b.classList.toggle('on', !$('#soundpanel').classList.toggle('hidden')),
   approve1: () => {
     if (!state) return;
     const first = state.approvals[0]?.id || state.board.find(t => t.status === 'waiting_approval')?.id;
     if (first) post('/api/decide', { id: first, approve: true });
   },
 };
-document.querySelectorAll('[data-act]').forEach(b => b.addEventListener('click', () => toggles[b.dataset.act](b)));
+document.querySelectorAll('[data-act]').forEach(b => b.addEventListener('click', () => { sound.play('click'); toggles[b.dataset.act](b); }));
+
+// Bảng âm thanh: tắt/mở, âm lượng tiếng báo và nhạc nền (nhớ lại cho lần sau)
+function syncSound() {
+  const st = sound.settings;
+  $('#snd-mute').checked = !st.muted;
+  $('#snd-music').checked = st.musicOn;
+  $('#snd-sfx-vol').value = Math.round(st.sfx * 100);
+  $('#snd-music-vol').value = Math.round(st.music * 100);
+  $('#btn-sound').textContent = st.muted ? '🔇' : '🔊';
+}
+$('#snd-mute').onchange = e => { sound.set('muted', !e.target.checked); syncSound(); };
+$('#snd-music').onchange = e => sound.set('musicOn', e.target.checked);
+$('#snd-sfx-vol').oninput = e => sound.set('sfx', e.target.value / 100);
+$('#snd-sfx-vol').onchange = () => sound.play('notify');
+$('#snd-music-vol').oninput = e => sound.set('music', e.target.value / 100);
+document.querySelectorAll('[data-try]').forEach(b => b.addEventListener('click', () => sound.play(b.dataset.try)));
+syncSound();
 if (innerWidth < 760) {
   for (const k of ['overview', 'log']) { $('#' + k).classList.add('hidden'); document.querySelector(`[data-act=${k}]`).classList.remove('on'); }
 }
@@ -492,7 +587,7 @@ const ptr = new THREE.Vector2();
 function pick(e) {
   ptr.set((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
   ray.setFromCamera(ptr, camera);
-  const hits = ray.intersectObjects(clickable, false).filter(hitOpaque);
+  const hits = ray.intersectObjects(clickable, false).filter(h => h.object.visible && hitOpaque(h));
   // trên cùng là cái vẽ sau cùng (gần camera hơn)
   hits.sort((a, b) => b.object.renderOrder - a.object.renderOrder);
   return hits[0];
@@ -524,6 +619,7 @@ window.__town = { openDetail, people, houses };
 const clock = new THREE.Clock();
 const SPEED = 150; // pixel bản đồ mỗi giây
 const STROLL = 60;  // đi dạo thì chậm hơn
+const STEP_LEN = 22; // mỗi bước dài bao nhiêu pixel bản đồ
 
 // Lúc rảnh thì đi dạo: quanh nhà mình, ra quảng trường, thỉnh thoảng ghé nhà bạn
 const canWander = a => (a.state === 'idle' || a.state === 'done') && a.at === a.home;
@@ -585,34 +681,84 @@ function stepPerson(p, dt, t) {
   p.pos.x += v.x * dt; p.pos.y += v.y * dt;
   const sp = Math.hypot(v.x, v.y);
   const moving = sp > 6;
+  if (p.walking && !moving) p.stopAt = t; // vừa dừng: nhún nhẹ một cái
   p.walking = moving;
-  const b = p.body;
+  // gait: 0 là đứng, 1 là đi đều. Đổi mượt nên bước chân không bật/tắt đột ngột
+  p.gait += ((moving ? Math.min(1, sp / 90) : 0) - p.gait) * (1 - Math.exp(-dt * 8));
+  const g = p.gait;
+  let vertical = false;
   if (moving) {
     p.dir.x = v.x / sp; p.dir.y = v.y / sp;
-    // Nhịp bước theo tốc độ; hướng chỉ đổi khi lệch rõ để không chớp hình
-    p.stride = (p.stride || 0) + dt * (1.6 + sp / 40);
+    p.stride += sp * dt / STEP_LEN; // đếm số bước theo quãng đường, chân không trượt
+    // Hướng chỉ đổi khi lệch rõ để không lắc qua lắc lại
     const ax = Math.abs(p.dir.x), ay = Math.abs(p.dir.y) * 1.6;
-    const vertical = p.facing === 'v' ? ay > ax * 0.7 : ay > ax * 1.4;
+    vertical = p.facing === 'v' ? ay > ax * 0.7 : ay > ax * 1.4;
     p.facing = vertical ? 'v' : 'h';
-    const step = Math.floor(p.stride * 2) % 2;
+    p.look = null;
     if (vertical) setPose(p, p.dir.y < 0 ? 'back' : 'front', false);
-    else setPose(p, step ? 'walk' : 'left', p.dir.x > 0 ? !step : !!step);
-    const ph = p.stride * Math.PI * 2;
-    b.position.y = Math.abs(Math.sin(ph)) * 3;
-    b.rotation.z = Math.sin(ph) * (vertical ? 0.06 : 0.03);
-    b.scale.set(1, 1 - Math.abs(Math.sin(ph)) * 0.02, 1);
+    else setPose(p, 'walk', p.dir.x < 0);
   } else {
     p.facing = null;
-    setPose(p, 'front', false);
-    b.position.y = st === 'working' ? Math.abs(Math.sin(t * 7 + p.phase)) * 3
-      : st === 'waiting' ? Math.abs(Math.sin(t * 3.2)) * 10 : 0;
-    b.rotation.z *= 1 - k;
-    const breathe = 1 + Math.sin(t * 2 + p.phase) * 0.012;
-    b.scale.set(1 / breathe, breathe, 1);
+    // Rảnh thì thỉnh thoảng quay sang ngó nghiêng
+    if (st === 'idle' || st === 'done') {
+      if (!p.look || t > p.look.until) {
+        const side = Math.random() < 0.4;
+        p.look = { pose: side ? 'left' : 'front', flip: side && Math.random() < 0.5, until: t + rnd(side ? 2 : 4, side ? 4 : 9) };
+      }
+    } else p.look = null;
+    setPose(p, p.look?.pose || 'front', !!p.look?.flip);
   }
+  const turnF = animTurn(p, dt);
+
+  // Bước đi giả bằng chuyển động: nhấp nhô, bẹp lúc chạm đất, vươn lúc nhấc chân,
+  // lắc nhẹ hai bên và ngả người theo hướng đi
+  const walkSheet = p.walkSprite && g > 0.15;
+  const amp = walkSheet ? 0.35 : 1; // có khung vẽ thật thì bớt nhún giả
+  const ph = p.stride * Math.PI;    // mỗi bước là nửa vòng
+  const s = Math.abs(Math.sin(ph)); // 0 lúc chạm đất, 1 giữa bước
+  let bob = s * 5 * g * amp;
+  let sq = (s - 0.55) * 0.08 * g * amp; // dương là vươn cao, âm là bẹp xuống
+  let rot = Math.sin(ph) * 0.03 * g * amp * (p.facing === 'v' ? 1.5 : 0.7) - p.dir.x * 0.075 * g;
+  if (st === 'working' && !moving) { // gõ phím: nhún nhanh, nhỏ
+    const w = Math.abs(Math.sin(t * 7 + p.phase));
+    bob += w * 2; sq += (w - 0.5) * 0.025;
+  }
+  if (st === 'waiting' && !moving) { // chờ duyệt: nhảy lên gọi bạn, có lấy đà và tiếp đất
+    const h = (t * 0.85 + p.phase) % 1;
+    if (h < 0.38) { const k = Math.sin(Math.PI * h / 0.38); bob += k * 12; sq += k * 0.06; }
+    else if (h < 0.6) sq -= 0.07 * Math.exp(-(h - 0.38) * 25);
+    else if (h > 0.88) sq -= 0.05 * Math.sin(Math.PI * (h - 0.88) / 0.12);
+  }
+  sq += Math.sin(t * 2 + p.phase) * 0.012 * (1 - g); // thở
+  if (p.stopAt) { const ts = t - p.stopAt; if (ts < 0.6) sq -= 0.05 * Math.exp(-ts * 8) * Math.cos(ts * 20); }
+
+  const b = p.body;
+  const sy = 1 + sq;
+  b.position.y = bob;
+  b.rotation.z += (rot - b.rotation.z) * (1 - Math.exp(-dt * 14));
+  b.scale.set((1 - sq * 0.8) * turnF, sy, 1);
+  const flip = !!p.shown?.flip;
+  if (p.sprite) { p.sprite.scale.x = flip ? -1 : 1; p.sprite.visible = !walkSheet; }
+  if (p.walkSprite) {
+    const ws = p.walkSprite, wk = meta.chars[charFor(p.data)].walk;
+    ws.visible = !!walkSheet;
+    if (walkSheet) {
+      const pose = p.shown?.pose;
+      let row = pose === 'back' ? 'up' : pose === 'walk' ? (flip ? 'left' : 'right') : 'down';
+      let wflip = false;
+      if (!wk.rows.includes(row)) { row = 'left'; wflip = true; } // chưa có hàng sang phải thì lật hàng sang trái
+      const r = wk.rows.indexOf(row), n = wk.rows.length;
+      const f = Math.floor(p.stride / 2 * wk.cols) % wk.cols; // một vòng = 2 bước
+      ws.material.map.offset.set(f / wk.cols, 1 - (r + 1) / n);
+      ws.scale.x = wflip ? -1 : 1;
+    }
+  }
+  const lift = 1 - Math.min(0.35, bob / 40); // nhảy lên thì bóng nhỏ lại
+  p.shadow.scale.set(p.W * 0.7 * lift, p.H * 0.16 * lift, 1);
   p.group.position.set(wx(p.pos.x), wy(p.pos.y), depth(p.pos.y) + 0.01);
   const ro = Math.round(p.pos.y * 10) + 1;
   if (p.sprite) p.sprite.renderOrder = ro;
+  if (p.walkSprite) p.walkSprite.renderOrder = ro;
   p.shadow.renderOrder = ro - 1;
 }
 

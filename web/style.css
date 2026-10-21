@@ -121,3 +121,22 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); c
   .label3d, .bubble3d.idle { font-size: 10px; }
   .bubble3d { max-width: 140px; font-size: 11px; }
 }
+
+/* Âm thanh */
+#soundpanel { top: 84px; right: 344px; width: 250px; z-index: 6; }
+#soundpanel label { display: flex; align-items: center; gap: 8px; font-size: 13px; margin: 6px 0; }
+#soundpanel label.vol { justify-content: space-between; color: var(--muted); }
+#soundpanel input[type=range] { width: 130px; accent-color: var(--accent); }
+#soundpanel .try { display: flex; flex-wrap: wrap; gap: 5px; }
+#soundpanel .try button { font: inherit; font-size: 12px; border: 1px solid var(--line); background: #fff; padding: 4px 8px; border-radius: 8px; cursor: pointer; }
+
+/* Thông báo nổi */
+#toasts { position: fixed; top: 84px; left: 50%; transform: translateX(-50%); z-index: 8; display: flex; flex-direction: column; gap: 8px; width: min(380px, calc(100% - 24px)); pointer-events: none; }
+.toast { pointer-events: auto; cursor: pointer; display: flex; gap: 10px; align-items: flex-start; background: var(--panel); border-radius: 12px; box-shadow: var(--shadow); padding: 10px 12px; font-size: 13px; border-left: 4px solid var(--accent); animation: toast-in .35s cubic-bezier(.2,1.4,.4,1); transition: opacity .35s, transform .35s; }
+.toast b { display: block; font-size: 13px; }
+.toast .ic { flex: none; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; color: #fff; font-weight: 700; font-size: 13px; background: var(--accent); }
+.toast.alert { border-left-color: var(--warn); } .toast.alert .ic { background: var(--warn); }
+.toast.error { border-left-color: var(--bad); } .toast.error .ic { background: var(--bad); }
+.toast.out { opacity: 0; transform: translateY(-8px); }
+@keyframes toast-in { from { opacity: 0; transform: translateY(-14px) scale(.96); } }
+@media (max-width: 760px) { #soundpanel { right: 12px; } }

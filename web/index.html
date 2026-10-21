@@ -26,9 +26,26 @@
       <button data-act="overview" class="on">Tổng quan</button>
       <button data-act="log" class="on">Nhật ký</button>
       <button data-act="demo" id="btn-demo">Tự chạy</button>
+      <button data-act="sound" id="btn-sound" title="Âm thanh">🔊</button>
       <button data-act="approve1" class="primary" id="btn-approve1">1 bước duyệt</button>
     </nav>
   </header>
+
+  <div id="soundpanel" class="panel hidden">
+    <h2>Âm thanh</h2>
+    <label class="sw"><input type="checkbox" id="snd-mute"> Bật âm thanh</label>
+    <label class="vol">Tiếng báo <input type="range" id="snd-sfx-vol" min="0" max="100"></label>
+    <label class="sw"><input type="checkbox" id="snd-music"> Nhạc nền</label>
+    <label class="vol">Nhạc nền <input type="range" id="snd-music-vol" min="0" max="100"></label>
+    <h3>Nghe thử</h3>
+    <div class="try">
+      <button data-try="notify">Tin mới</button><button data-try="alert">Cần duyệt</button>
+      <button data-try="error">Lỗi</button><button data-try="done">Xong việc</button>
+      <button data-try="handoff">Bàn giao</button>
+    </div>
+  </div>
+
+  <div id="toasts"></div>
 
   <aside id="overview" class="panel">
     <h2>Tổng quan</h2>
