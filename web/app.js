@@ -286,6 +286,7 @@ function goTo(p, a) {
   if (p.goal && Math.abs(p.goal.x - s.x) < 1 && Math.abs(p.goal.y - s.y) < 1) return;
   const sameHouse = p.goal && p.goal.house && p.goal.house === s.house;
   p.goal = s;
+  p.wander = null; p.speed = SPEED;
   if (sameHouse || Math.hypot(s.x - p.pos.x, s.y - p.pos.y) < 120) { p.route = [s]; return; }
   p.route = [plazaEdge(p.pos), plazaEdge(s), s];
 }
@@ -450,15 +451,55 @@ window.__town = { openDetail, people, houses };
 // ---------- Vòng vẽ ----------
 const clock = new THREE.Clock();
 const SPEED = 150; // pixel bản đồ mỗi giây
+const STROLL = 60;  // đi dạo thì chậm hơn
+
+// Lúc rảnh thì đi dạo: quanh nhà mình, ra quảng trường, thỉnh thoảng ghé nhà bạn
+const canWander = a => (a.state === 'idle' || a.state === 'done') && a.at === a.home;
+const rnd = (a, b) => a + Math.random() * (b - a);
+function planWander(p, t) {
+  const home = p.goal;
+  const others = Object.entries(houses).filter(([id]) => id !== home.house);
+  const r = Math.random();
+  let dest, route;
+  if (r < 0.5) {
+    dest = { x: home.x + rnd(-70, 70), y: home.y + rnd(-10, 30) };
+    route = [dest];
+  } else if (r < 0.85 || !others.length) {
+    const ang = rnd(0, Math.PI * 2), k = Math.sqrt(Math.random()) * 0.85;
+    dest = { x: PLAZA.x + Math.cos(ang) * PLAZA.rx * k, y: PLAZA.y + Math.sin(ang) * PLAZA.ry * k };
+    route = [plazaEdge(p.pos), dest];
+  } else {
+    const h = others[Math.floor(Math.random() * others.length)][1];
+    dest = { x: h.door.x + rnd(-40, 40), y: h.door.y + rnd(0, 20) };
+    route = [plazaEdge(p.pos), plazaEdge(dest), dest];
+  }
+  p.wander = { until: t + rnd(4, 9) + Math.hypot(dest.x - p.pos.x, dest.y - p.pos.y) / STROLL * 1.5 };
+  p.route = route; p.speed = STROLL;
+}
+function goHome(p, speed) {
+  const s = p.goal;
+  p.speed = speed;
+  p.route = Math.hypot(s.x - p.pos.x, s.y - p.pos.y) < 120 ? [s] : [plazaEdge(p.pos), plazaEdge(s), s];
+}
+
 function stepPerson(p, dt, t) {
   if (!p.pos) return;
   const st = p.data.state;
+  if (p.goal) {
+    // Có việc thì đi nhanh về chỗ; rảnh thì nghỉ một lúc rồi đi dạo tiếp
+    if (!canWander(p.data)) { if (p.wander) { p.wander = null; goHome(p, SPEED); } }
+    else if (!p.wander) p.wander = { until: t + rnd(2, 8) };
+    else if (!p.route.length && t > p.wander.until) {
+      if (Math.random() < 0.3) { goHome(p, STROLL); p.wander.until = t + rnd(8, 16); }
+      else planWander(p, t);
+    }
+  }
   let moving = false;
   while (p.route.length) {
     const w = p.route[0];
     const dx = w.x - p.pos.x, dy = w.y - p.pos.y, d = Math.hypot(dx, dy);
     if (d < 1) { p.pos.x = w.x; p.pos.y = w.y; p.route.shift(); continue; }
-    const s = Math.min(d, SPEED * dt);
+    const s = Math.min(d, (p.speed || SPEED) * dt);
     p.pos.x += dx / d * s; p.pos.y += dy / d * s;
     p.dir.x = dx / d; p.dir.y = dy / d;
     moving = true;
