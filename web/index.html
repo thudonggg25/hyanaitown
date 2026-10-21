@@ -19,7 +19,8 @@
       <div class="sub"><span id="conn" class="dot off"></span><span id="subtitle">Đang kết nối…</span></div>
     </div>
     <nav class="tools">
-      <button data-act="rotate" title="Camera tự lướt chậm qua thị trấn">Lướt</button>
+      <button data-act="view" id="btn-view" title="Đổi giữa thị trấn 3D và bản tranh vẽ">Kiểu</button>
+      <button data-act="rotate" id="btn-rotate" title="Camera tự xoay hoặc lướt chậm">Lướt</button>
       <button data-act="names" class="on">Tên</button>
       <button data-act="bubbles" class="on">Bong bóng</button>
       <button data-act="home">Toàn cảnh</button>
@@ -54,7 +55,7 @@
     <div id="detailbody"></div>
   </aside>
 
-  <footer id="credits">Thị trấn AI agent · three.js 2.5D · tranh anime vẽ tay · kéo để di chuyển, cuộn để phóng to</footer>
+  <footer id="credits">Thị trấn AI agent · <span class="only-toy">three.js 3D · kéo để xoay, chuột phải để di chuyển, cuộn để phóng to</span><span class="only-paint">three.js 2.5D · tranh anime vẽ tay · kéo để di chuyển, cuộn để phóng to</span></footer>
 
   <script type="module" src="app.js"></script>
 </body>

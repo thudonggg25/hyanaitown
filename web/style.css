@@ -121,3 +121,6 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); c
   .label3d, .bubble3d.idle { font-size: 10px; }
   .bubble3d { max-width: 140px; font-size: 11px; }
 }
+
+/* Hai kiểu xem */
+body.view-toy .only-paint, body.view-paint .only-toy { display: none; }
