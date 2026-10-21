@@ -140,3 +140,90 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); c
 .toast.out { opacity: 0; transform: translateY(-8px); }
 @keyframes toast-in { from { opacity: 0; transform: translateY(-14px) scale(.96); } }
 @media (max-width: 760px) { #soundpanel { right: 12px; } }
+
+/* ---------- Giao diện vẽ tay (ảnh trong assets/ui, cắt bằng tools/lam_ui.py) ---------- */
+:root { font-family: "Nunito", "Segoe UI", system-ui, sans-serif; --ink: #4a3426; --muted: #8a7260; --line: #e4d3b8; --accent: #6f9a52; --warn: #d79a2b; --bad: #d8644f; }
+.panel, .brand, .tools {
+  background: none; box-shadow: none; border-radius: 0;
+  border-style: solid; filter: drop-shadow(0 6px 14px rgba(60, 40, 20, .22));
+}
+.brand, .tools, #soundpanel {
+  border-width: 12px; border-image: url(assets/ui/card.webp) 26 fill / 12px stretch;
+}
+.brand { padding: 0 4px; }
+.tools { padding: 0; gap: 4px; }
+/* Bảng lớn: thanh gỗ làm tiêu đề */
+#overview, #log, #detail {
+  border-width: 42px 14px 14px; padding: 4px 6px 6px;
+  border-image: url(assets/ui/panel.webp) 52 24 24 fill / 42px 14px 14px stretch;
+}
+#overview h2, #log h2 {
+  margin: -36px 0 14px; height: 26px; line-height: 26px; text-align: center; font-size: 15px; font-weight: 800;
+  color: #fff6e3; text-shadow: 0 1px 0 #6b4320, 0 0 4px rgba(80, 45, 15, .6); letter-spacing: .02em;
+}
+.panel h3 { color: var(--muted); font-weight: 800; }
+#detail .close { top: -36px; right: 2px; color: #fff6e3; text-shadow: 0 1px 2px #6b4320; }
+
+/* Nút: ảnh 3 trạng thái */
+.tools button, .list button, #soundpanel .try button {
+  font-weight: 700; color: var(--ink); background: none; border-radius: 0; cursor: pointer;
+  border-style: solid; border-width: 9px 14px 11px; padding: 0 2px; line-height: 18px;
+  border-image: url(assets/ui/btn-cream-normal.webp) 30 40 34 fill / 9px 14px 11px stretch;
+  display: inline-flex; align-items: center; gap: 4px;
+}
+.tools button img { width: 22px; height: 22px; margin: -3px 0; }
+.tools button:hover, .list button:hover, #soundpanel .try button:hover { border-image-source: url(assets/ui/btn-cream-hover.webp); }
+.tools button:active, .list button:active, #soundpanel .try button:active { border-image-source: url(assets/ui/btn-cream-pressed.webp); transform: translateY(1px); }
+.tools button.on { border-image-source: url(assets/ui/btn-green-normal.webp); color: #fff; text-shadow: 0 1px 1px rgba(40, 70, 20, .6); }
+.tools button.on:hover { border-image-source: url(assets/ui/btn-green-hover.webp); }
+.tools button.on:active { border-image-source: url(assets/ui/btn-green-pressed.webp); }
+.tools button.primary, .list li .row button.ok { border-image-source: url(assets/ui/btn-green-normal.webp); color: #fff; text-shadow: 0 1px 1px rgba(40, 70, 20, .6); background: none; }
+.tools button.primary:hover, .list li .row button.ok:hover { border-image-source: url(assets/ui/btn-green-hover.webp); }
+.tools button.primary:disabled { opacity: 1; border-image-source: url(assets/ui/btn-green-disabled.webp); cursor: default; }
+.list li .row button.no { border-image-source: url(assets/ui/btn-red-normal.webp); color: #fff; text-shadow: 0 1px 1px rgba(110, 30, 20, .6); }
+.list li .row button.no:hover { border-image-source: url(assets/ui/btn-red-hover.webp); }
+#btn-demo.on { background: none; border-image-source: url(assets/ui/btn-amber-normal.webp); color: #5a3a0c; text-shadow: none; }
+#btn-demo.on:hover { border-image-source: url(assets/ui/btn-amber-hover.webp); }
+
+/* Thẻ nhỏ trong bảng */
+.stat, .list li, #detail .now {
+  background: none; border-radius: 0; border-style: solid; border-width: 8px;
+  border-image: url(assets/ui/card.webp) 26 fill / 8px stretch;
+}
+.list li { padding: 2px 4px; }
+.list.compact li { padding: 0 3px; }
+.stat { padding: 0; }
+.tag { font-weight: 700; border: 1.5px solid rgba(90, 60, 30, .35); padding: 0 8px; }
+.tag.running { background: #dcebd0; color: #3f6b2a; }
+.tag.queued { background: #dceaf3; color: #3e6480; }
+.tag.waiting_approval { background: #fbe6b8; color: #94600f; }
+.tag.approved, .tag.done { background: #d4eedf; color: #2d7a52; }
+.tag.rejected, .tag.error { background: #f8d8cf; color: #a83a28; }
+#detail .chip { background: #fff8ea; border-color: var(--line); }
+
+/* Biển tên nhà: tấm gỗ đóng đinh */
+.sign3d {
+  background: none; border-radius: 0; border-style: solid; border-width: 7px 16px; padding: 0 2px;
+  border-image: url(assets/ui/plate.webp) 30 44 fill / 7px 16px stretch;
+  color: #fff6e3; text-shadow: 0 1px 0 #5b3716, 0 0 3px rgba(70, 40, 10, .7); font-weight: 800;
+  filter: drop-shadow(0 2px 3px rgba(50, 30, 10, .35));
+}
+
+/* Thông báo nổi: thẻ có ô tròn đựng icon */
+.toast {
+  background: none; box-shadow: none; border-radius: 0; border-style: solid;
+  border-width: 10px 16px 10px 44px; padding: 2px 4px 2px 6px; min-height: 24px; position: relative;
+  border-image: url(assets/ui/toast.webp) 20 32 20 88 fill / 10px 16px 10px 44px stretch;
+  filter: drop-shadow(0 6px 12px rgba(60, 40, 20, .25));
+}
+.toast .ic { position: absolute; left: -38px; top: 50%; width: 30px; height: 30px; margin-top: -15px; background: none; border-radius: 0; }
+.toast.alert .ic, .toast.error .ic { background: none; }
+.toast.alert { animation: toast-in .35s cubic-bezier(.2,1.4,.4,1), toast-shake .5s .35s 2; }
+@keyframes toast-shake { 25% { transform: rotate(-1.5deg); } 75% { transform: rotate(1.5deg); } }
+/* Tiêu đề nằm trên thanh gỗ (vùng viền) nên bảng không được cắt tràn: cuộn ở phần thân */
+#overview, #log, #detail { overflow: visible; display: flex; flex-direction: column; }
+#overview > *, #log > * { flex: none; }
+#approvals { overflow: auto; max-height: 32vh; }
+#board, #logbody, #detailbody { flex: 1 1 auto; min-height: 0; overflow: auto; }
+#overview.hidden, #log.hidden, #detail.hidden { display: none; }
+#soundpanel { width: 300px; } #soundpanel label.vol { white-space: nowrap; }

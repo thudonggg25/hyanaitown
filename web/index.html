@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Thị trấn AI agent</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ctext y=%22.9em%22 font-size=%2290%22%3E%F0%9F%8F%A1%3C/text%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@500;700;800&display=swap">
   <link rel="stylesheet" href="style.css">
   <script type="importmap">
     { "imports": { "three": "./vendor/three.module.js" } }
@@ -19,15 +21,15 @@
       <div class="sub"><span id="conn" class="dot off"></span><span id="subtitle">Đang kết nối…</span></div>
     </div>
     <nav class="tools">
-      <button data-act="rotate" title="Camera tự lướt chậm qua thị trấn">Lướt</button>
-      <button data-act="names" class="on">Tên</button>
-      <button data-act="bubbles" class="on">Bong bóng</button>
-      <button data-act="home">Toàn cảnh</button>
-      <button data-act="overview" class="on">Tổng quan</button>
-      <button data-act="log" class="on">Nhật ký</button>
-      <button data-act="demo" id="btn-demo">Tự chạy</button>
-      <button data-act="sound" id="btn-sound" title="Âm thanh">🔊</button>
-      <button data-act="approve1" class="primary" id="btn-approve1">1 bước duyệt</button>
+      <button data-act="rotate" title="Camera tự lướt chậm qua thị trấn"><img src="assets/ui/icon-drift.webp" alt=""><span>Lướt</span></button>
+      <button data-act="names" class="on"><img src="assets/ui/icon-name.webp" alt=""><span>Tên</span></button>
+      <button data-act="bubbles" class="on"><img src="assets/ui/icon-bubble.webp" alt=""><span>Bong bóng</span></button>
+      <button data-act="home"><img src="assets/ui/icon-home.webp" alt=""><span>Toàn cảnh</span></button>
+      <button data-act="overview" class="on"><img src="assets/ui/icon-map.webp" alt=""><span>Tổng quan</span></button>
+      <button data-act="log" class="on"><img src="assets/ui/icon-log.webp" alt=""><span>Nhật ký</span></button>
+      <button data-act="demo" id="btn-demo"><img src="assets/ui/icon-play.webp" alt=""><span>Tự chạy</span></button>
+      <button data-act="sound" id="btn-sound" title="Âm thanh"><img src="assets/ui/icon-sound.webp" alt=""><span>Âm thanh</span></button>
+      <button data-act="approve1" class="primary" id="btn-approve1"><img src="assets/ui/icon-ok.webp" alt=""><span>1 bước duyệt</span></button>
     </nav>
   </header>
 

@@ -14,6 +14,7 @@ const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
 const SPR = 'assets/sprites/';
+const UI = 'assets/ui/';
 const MAP_W = 1920, MAP_H = 1080;
 
 // Ô đất trên bản đồ (pixel ảnh). x, y là tâm chân nhà; w là bề ngang nhà khi vẽ.
@@ -420,7 +421,8 @@ function apply(s) {
   renderLog(s.log);
   if (selected) renderDetail(selected);
   $('#btn-demo').classList.toggle('on', !!s.settings.demo);
-  $('#btn-demo').textContent = s.settings.demo ? 'Dừng tự chạy' : 'Tự chạy';
+  $('#btn-demo span').textContent = s.settings.demo ? 'Dừng tự chạy' : 'Tự chạy';
+  $('#btn-demo img').src = UI + (s.settings.demo ? 'icon-no.webp' : 'icon-play.webp');
   const pending = s.approvals.length + s.board.filter(t => t.status === 'waiting_approval').length;
   $('#btn-approve1').disabled = pending === 0;
 }
@@ -456,12 +458,12 @@ function announce(s) {
   if (more) want('alert');
   if (snd) sound.play(snd);
 }
-const TOAST_ICON = { alert: '!', error: '×', done: '✓', info: 'i' };
+const TOAST_ICON = { alert: 'bell', error: 'error', done: 'ok', info: 'mail' };
 function toast(kind, who, text) {
   const box = $('#toasts');
   const el = document.createElement('div');
   el.className = 'toast ' + kind;
-  el.innerHTML = `<span class="ic">${TOAST_ICON[kind] || 'i'}</span><div><b>${esc(who)}</b><div>${esc(text)}</div></div>`;
+  el.innerHTML = `<img class="ic" src="${UI}icon-${TOAST_ICON[kind] || 'mail'}.webp" alt=""><div><b>${esc(who)}</b><div>${esc(text)}</div></div>`;
   el.onclick = () => el.remove();
   box.prepend(el);
   while (box.children.length > 4) box.lastChild.remove();
@@ -545,7 +547,7 @@ document.addEventListener('click', e => {
 
 let drift = false;
 const toggles = {
-  rotate: b => { drift = !drift; b.classList.toggle('on', drift); b.textContent = drift ? 'Dừng lướt' : 'Lướt'; },
+  rotate: b => { drift = !drift; b.classList.toggle('on', drift); b.querySelector('span').textContent = drift ? 'Dừng lướt' : 'Lướt'; },
   names: b => { b.classList.toggle('on', !document.body.classList.toggle('hide-names')); },
   bubbles: b => { b.classList.toggle('on', !document.body.classList.toggle('hide-bubbles')); },
   home: () => { camera.position.set(0, 0, 200); camera.zoom = 1; camera.updateProjectionMatrix(); controls.target.set(0, 0, 0); },
@@ -568,7 +570,7 @@ function syncSound() {
   $('#snd-music').checked = st.musicOn;
   $('#snd-sfx-vol').value = Math.round(st.sfx * 100);
   $('#snd-music-vol').value = Math.round(st.music * 100);
-  $('#btn-sound').textContent = st.muted ? '🔇' : '🔊';
+  $('#btn-sound img').src = UI + (st.muted ? 'icon-mute.webp' : 'icon-sound.webp');
 }
 $('#snd-mute').onchange = e => { sound.set('muted', !e.target.checked); syncSound(); };
 $('#snd-music').onchange = e => sound.set('musicOn', e.target.checked);
@@ -613,7 +615,7 @@ function connect() {
   es.onmessage = e => apply(JSON.parse(e.data));
   es.onerror = () => { $('#conn').classList.add('off'); $('#subtitle').textContent = 'Mất kết nối server, đang thử lại…'; };
 }
-window.__town = { openDetail, people, houses };
+window.__town = { openDetail, people, houses, toast };
 
 // ---------- Vòng vẽ ----------
 const clock = new THREE.Clock();
@@ -712,7 +714,17 @@ function stepPerson(p, dt, t) {
 
   // Bước đi giả bằng chuyển động: nhấp nhô, bẹp lúc chạm đất, vươn lúc nhấc chân,
   // lắc nhẹ hai bên và ngả người theo hướng đi
-  const walkSheet = p.walkSprite && g > 0.15;
+  // Hàng khung vẽ thật theo hướng đang quay mặt (thiếu hàng sang phải thì lật hàng sang trái)
+  const flip = !!p.shown?.flip;
+  let walkRow = null, walkFlip = false;
+  const wk = p.walkSprite && meta.chars[charFor(p.data)].walk;
+  if (wk && g > 0.15) {
+    const pose = p.shown?.pose;
+    walkRow = pose === 'back' ? 'up' : pose === 'walk' ? (flip ? 'left' : 'right') : 'down';
+    if (walkRow === 'right' && !wk.rows.includes('right')) { walkRow = 'left'; walkFlip = true; }
+    if (!wk.rows.includes(walkRow)) walkRow = null; // hướng này chưa vẽ thì dùng dáng đứng + nhún giả
+  }
+  const walkSheet = !!walkRow;
   const amp = walkSheet ? 0.35 : 1; // có khung vẽ thật thì bớt nhún giả
   const ph = p.stride * Math.PI;    // mỗi bước là nửa vòng
   const s = Math.abs(Math.sin(ph)); // 0 lúc chạm đất, 1 giữa bước
@@ -737,20 +749,15 @@ function stepPerson(p, dt, t) {
   b.position.y = bob;
   b.rotation.z += (rot - b.rotation.z) * (1 - Math.exp(-dt * 14));
   b.scale.set((1 - sq * 0.8) * turnF, sy, 1);
-  const flip = !!p.shown?.flip;
   if (p.sprite) { p.sprite.scale.x = flip ? -1 : 1; p.sprite.visible = !walkSheet; }
   if (p.walkSprite) {
-    const ws = p.walkSprite, wk = meta.chars[charFor(p.data)].walk;
-    ws.visible = !!walkSheet;
+    const ws = p.walkSprite;
+    ws.visible = walkSheet;
     if (walkSheet) {
-      const pose = p.shown?.pose;
-      let row = pose === 'back' ? 'up' : pose === 'walk' ? (flip ? 'left' : 'right') : 'down';
-      let wflip = false;
-      if (!wk.rows.includes(row)) { row = 'left'; wflip = true; } // chưa có hàng sang phải thì lật hàng sang trái
-      const r = wk.rows.indexOf(row), n = wk.rows.length;
+      const r = wk.rows.indexOf(walkRow), n = wk.rows.length;
       const f = Math.floor(p.stride / 2 * wk.cols) % wk.cols; // một vòng = 2 bước
       ws.material.map.offset.set(f / wk.cols, 1 - (r + 1) / n);
-      ws.scale.x = wflip ? -1 : 1;
+      ws.scale.x = walkFlip ? -1 : 1;
     }
   }
   const lift = 1 - Math.min(0.35, bob / 40); // nhảy lên thì bóng nhỏ lại

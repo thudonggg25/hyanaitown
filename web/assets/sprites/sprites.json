@@ -51,7 +51,16 @@
     "back",
     "left",
     "walk"
-   ]
+   ],
+   "walk": {
+    "file": "nv/calm-walk.webp",
+    "cols": 6,
+    "rows": [
+     "down",
+     "up",
+     "left"
+    ]
+   }
   },
   "anicca": {
    "file": "nv/anicca.webp",
@@ -62,7 +71,16 @@
     "back",
     "left",
     "walk"
-   ]
+   ],
+   "walk": {
+    "file": "nv/anicca-walk.webp",
+    "cols": 6,
+    "rows": [
+     "down",
+     "up",
+     "left"
+    ]
+   }
   },
   "coder": {
    "file": "nv/coder.webp",
@@ -73,7 +91,16 @@
     "back",
     "left",
     "walk"
-   ]
+   ],
+   "walk": {
+    "file": "nv/coder-walk.webp",
+    "cols": 6,
+    "rows": [
+     "down",
+     "up",
+     "left"
+    ]
+   }
   },
   "coder-b": {
    "file": "nv/coder-b.webp",
@@ -84,7 +111,16 @@
     "back",
     "left",
     "walk"
-   ]
+   ],
+   "walk": {
+    "file": "nv/coder-walk.webp",
+    "cols": 6,
+    "rows": [
+     "down",
+     "up",
+     "left"
+    ]
+   }
   },
   "thiet-ke": {
    "file": "nv/thiet-ke.webp",
@@ -95,7 +131,16 @@
     "back",
     "left",
     "walk"
-   ]
+   ],
+   "walk": {
+    "file": "nv/thiet-ke-walk.webp",
+    "cols": 6,
+    "rows": [
+     "down",
+     "up",
+     "left"
+    ]
+   }
   },
   "san-pham": {
    "file": "nv/san-pham.webp",
@@ -106,7 +151,16 @@
     "back",
     "left",
     "walk"
-   ]
+   ],
+   "walk": {
+    "file": "nv/san-pham-walk.webp",
+    "cols": 6,
+    "rows": [
+     "down",
+     "up",
+     "left"
+    ]
+   }
   },
   "tiep-nhan": {
    "file": "nv/tiep-nhan.webp",
@@ -117,7 +171,16 @@
     "back",
     "left",
     "walk"
-   ]
+   ],
+   "walk": {
+    "file": "nv/tiep-nhan-walk.webp",
+    "cols": 6,
+    "rows": [
+     "down",
+     "up",
+     "left"
+    ]
+   }
   },
   "qa": {
    "file": "nv/qa.webp",
@@ -128,7 +191,16 @@
     "back",
     "left",
     "walk"
-   ]
+   ],
+   "walk": {
+    "file": "nv/qa-walk.webp",
+    "cols": 6,
+    "rows": [
+     "down",
+     "up",
+     "left"
+    ]
+   }
   },
   "khach": {
    "file": "nv/khach.webp",
@@ -139,7 +211,16 @@
     "back",
     "left",
     "walk"
-   ]
+   ],
+   "walk": {
+    "file": "nv/tiep-nhan-walk.webp",
+    "cols": 6,
+    "rows": [
+     "down",
+     "up",
+     "left"
+    ]
+   }
   }
  }
 }

@@ -60,3 +60,6 @@ hyan chốt: làm **web game** three.js (không làm client riêng), đội AI �
 - Dáng đi nhiều khung: thêm `walk: { file, cols, rows: ['down','up','left','right'] }` vào nhân vật trong `sprites.json` là game tự dùng (thiếu hàng `right` thì lật hàng `left`).
 - Âm thanh `web/sound.js`: Web Audio tự tạo (tin mới, cần duyệt, lỗi, xong việc, bàn giao, nhạc nền lo-fi), nút 🔊 có âm lượng, nhớ trong localStorage. Tiếng gắn với nhật ký thật (`announce` trong app.js), kèm thông báo nổi.
 - Prompt GPT cho walk cycle và UI: `docs/PROMPT-GPT.md`. Ảnh hyan gửi lại phải commit vào repo, không để trong project files (ảnh lớn làm treo phiên).
+- Ảnh do Claude tự vẽ bằng skill `create-image` (9router codex-image). Ảnh gốc ở `F:\AI-Workspace\hyanaitown-anh-2026-10-21\` (có `ve_buoc_di.sh`). Ảnh mẫu tham chiếu phải là PNG nền trắng (`ref/<mã>.png`) kèm mô tả chữ; dùng webp trong suốt thì model bỏ qua ảnh mẫu và vẽ sai người.
+- Dáng đi: `python tools/lam_buoc_di.py <thư mục ảnh> <mã>...` (6 khung mỗi hướng, xuống/lên/trái; `coder-b=coder`, `khach=tiep-nhan` dùng chung).
+- Giao diện vẽ tay: `python tools/lam_ui.py <thư mục ảnh>` cắt icon, nút 4 màu × 4 trạng thái, khung bảng, thẻ thông báo, biển gỗ ra `web/assets/ui/`; CSS dùng `border-image` ở cuối `web/style.css`.
