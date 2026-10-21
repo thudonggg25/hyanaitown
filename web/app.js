@@ -53,11 +53,10 @@ host.appendChild(labels.domElement);
 const scene = new THREE.Scene();
 scene.background = new THREE.Color('#e9c9d8'); // màu trời ngoài mép ảnh (màn hình dọc)
 
-// Kiểu xem: 'hd' = tranh vẽ dựng 2.5D, nghiêng xoay được (mặc định);
-// 'paint' = tranh vẽ phẳng nhìn thẳng; 'toy' = 3D hình khối (chỉ mở bằng ?view=toy)
-let VIEW = 'hd';
-try { VIEW = new URLSearchParams(location.search).get('view') || localStorage.getItem('view') || 'hd'; } catch {}
-if (!['hd', 'paint', 'toy'].includes(VIEW)) VIEW = 'hd';
+// Kiểu xem: 'paint' = tranh vẽ phẳng nhìn thẳng (mặc định, hyan chọn).
+// Hai kiểu thử nghiệm chỉ mở bằng địa chỉ: ?view=hd (tranh dựng 2.5D, xoay được), ?view=toy (3D hình khối).
+let VIEW = new URLSearchParams(location.search).get('view') || 'paint';
+if (!['hd', 'paint', 'toy'].includes(VIEW)) VIEW = 'paint';
 const HD = VIEW === 'hd';
 document.body.classList.add('view-' + (VIEW === 'toy' ? 'toy' : 'paint'));
 const toy = VIEW === 'toy' ? createToy({ renderer, scene, label }) : null;
@@ -611,7 +610,7 @@ const toggles = {
     if (first) post('/api/decide', { id: first, approve: true });
   },
 };
-$('#btn-view').textContent = HD ? 'Kiểu phẳng' : toy ? 'Kiểu tranh' : 'Kiểu 2.5D';
+if ($('#btn-view')) $('#btn-view').textContent = HD ? 'Kiểu phẳng' : toy ? 'Kiểu tranh' : 'Kiểu 2.5D';
 $('#btn-rotate').textContent = toy ? 'Xoay' : 'Lướt';
 if (HD) $('#credits .only-paint').textContent = 'three.js 2.5D · tranh anime vẽ tay · kéo để xoay, chuột phải để di chuyển, cuộn để phóng to';
 document.querySelectorAll('[data-act]').forEach(b => b.addEventListener('click', () => toggles[b.dataset.act](b)));
