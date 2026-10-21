@@ -53,16 +53,39 @@ host.appendChild(labels.domElement);
 const scene = new THREE.Scene();
 scene.background = new THREE.Color('#e9c9d8'); // màu trời ngoài mép ảnh (màn hình dọc)
 
-// Hai kiểu xem: 'toy' = 3D đồ chơi xoay được (mặc định), 'paint' = tranh anime vẽ tay
-let VIEW = 'toy';
-try { VIEW = new URLSearchParams(location.search).get('view') || localStorage.getItem('view') || 'toy'; } catch {}
-if (VIEW !== 'paint') VIEW = 'toy';
-document.body.classList.add('view-' + VIEW);
+// Kiểu xem: 'hd' = tranh vẽ dựng 2.5D, nghiêng xoay được (mặc định);
+// 'paint' = tranh vẽ phẳng nhìn thẳng; 'toy' = 3D hình khối (chỉ mở bằng ?view=toy)
+let VIEW = 'hd';
+try { VIEW = new URLSearchParams(location.search).get('view') || localStorage.getItem('view') || 'hd'; } catch {}
+if (!['hd', 'paint', 'toy'].includes(VIEW)) VIEW = 'hd';
+const HD = VIEW === 'hd';
+document.body.classList.add('view-' + (VIEW === 'toy' ? 'toy' : 'paint'));
 const toy = VIEW === 'toy' ? createToy({ renderer, scene, label }) : null;
+
+// 2.5D: bản đồ nằm làm mặt sàn, nhà và người là tấm tranh đứng luôn quay về camera.
+// Tranh vốn vẽ cho góc nhìn thẳng, nên kéo dài sàn và tấm đứng cho bù góc nghiêng mặc định.
+const TILT = 0.72;                 // góc camera so với phương thẳng đứng (radian)
+const ZK = 1 / Math.cos(TILT);     // kéo dài sàn theo chiều sâu
+const YK = 1 / Math.sin(TILT);     // kéo cao tranh đứng
+const gz = y => (y - MAP_H / 2) * ZK;
 
 let camera, controls;
 if (toy) ({ camera, controls } = toy);
-else {
+else if (HD) {
+  camera = new THREE.PerspectiveCamera(28, 1, 50, 12000);
+  controls = new OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.1;
+  controls.screenSpacePanning = false;
+  controls.minPolarAngle = TILT - 0.32;
+  controls.maxPolarAngle = TILT + 0.2;
+  controls.minAzimuthAngle = -0.55;
+  controls.maxAzimuthAngle = 0.55;
+  controls.minDistance = 700;
+  controls.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN };
+  controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
+  controls.rotateSpeed = 0.5;
+} else {
   camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 400);
   camera.position.set(0, 0, 200);
   controls = new OrbitControls(camera, renderer.domElement);
@@ -81,6 +104,12 @@ let halfW = MAP_W / 2, halfH = MAP_H / 2;
 function resize() {
   const w = innerWidth, h = innerHeight, a = w / h;
   if (toy) { toy.resize(w, h); renderer.setSize(w, h); labels.setSize(w, h); return; }
+  if (HD) {
+    camera.aspect = a; camera.updateProjectionMatrix();
+    renderer.setSize(w, h); labels.setSize(w, h);
+    hdFit();
+    return;
+  }
   // Màn hình ngang: phủ kín khung bằng ảnh. Màn hình dọc: giữ đủ bề ngang hòn đảo.
   if (a >= MAP_W / MAP_H) { halfW = MAP_W / 2; halfH = halfW / a; }
   else { halfH = MAP_H / 2; halfW = halfH * a; if (halfW < 500) { halfW = 500; halfH = halfW / a; } }
@@ -89,12 +118,35 @@ function resize() {
   renderer.setSize(w, h);
   labels.setSize(w, h);
 }
+// Khoảng cách camera để thấy vừa đủ bề ngang (hoặc bề cao) bản đồ
+let hdDist = 2000;
+function hdFit() {
+  const vf = THREE.MathUtils.degToRad(camera.fov);
+  const hf = 2 * Math.atan(Math.tan(vf / 2) * camera.aspect);
+  const byW = (MAP_W * 0.5) / Math.tan(hf / 2), byH = (MAP_H * 0.5) / Math.tan(vf / 2);
+  hdDist = Math.min(byW, byH) * (camera.aspect < 1 ? 1.25 : 1.02);
+  controls.maxDistance = hdDist * 1.15;
+  if (!camera.userData.placed) { hdHome(); camera.userData.placed = true; }
+}
+function hdHome() {
+  controls.target.set(0, 0, 20);
+  camera.position.set(0, Math.cos(TILT) * hdDist, 20 + Math.sin(TILT) * hdDist);
+  camera.updateProjectionMatrix();
+}
+
 addEventListener('resize', resize);
 resize();
 
 // Không cho kéo camera ra khỏi bản đồ
 function clampView() {
   if (toy) return toy.clampView();
+  if (HD) {
+    const t = controls.target, mx = MAP_W * 0.38, mz = MAP_H * ZK * 0.32;
+    const cx = THREE.MathUtils.clamp(t.x, -mx, mx), cz = THREE.MathUtils.clamp(t.z, -mz, mz);
+    camera.position.x += cx - t.x; camera.position.z += cz - t.z; camera.position.y -= t.y;
+    t.set(cx, 0, cz);
+    return;
+  }
   const vw = halfW / camera.zoom, vh = halfH / camera.zoom;
   const mx = Math.max(0, MAP_W / 2 - vw), my = Math.max(0, MAP_H / 2 - vh);
   const t = controls.target;
@@ -249,8 +301,25 @@ async function buildMap() {
   if (!tex) return;
   const m = new THREE.Mesh(new THREE.PlaneGeometry(MAP_W, MAP_H), new THREE.MeshBasicMaterial({ map: tex, depthWrite: false, depthTest: false }));
   m.position.z = -10;
-  m.renderOrder = -1;
+  m.renderOrder = -1e6;
+  if (HD) { m.rotation.x = -Math.PI / 2; m.scale.y = ZK; m.position.set(0, 0, 0); }
   scene.add(m);
+}
+
+// 2.5D: tấm tranh đứng quay theo camera, cái nào gần camera hơn thì vẽ sau
+const standees = []; // { obj, x, y } toạ độ chân trên bản đồ
+const camFwd = new THREE.Vector3();
+function hdUpdate() {
+  const az = controls.getAzimuthalAngle();
+  camera.getWorldDirection(camFwd);
+  for (const s of standees) {
+    s.obj.rotation.y = az;
+    const d = (wx(s.x) - camera.position.x) * camFwd.x + (gz(s.y) - camera.position.z) * camFwd.z - camera.position.y * camFwd.y;
+    const ro = Math.round(-d * 4);
+    if (s.obj.isMesh) s.obj.renderOrder = ro;
+    if (s.sprite?.()) s.sprite().renderOrder = ro;
+    if (s.shadow) s.shadow.renderOrder = ro - 1;
+  }
 }
 
 async function buildHouse(houseId, roomIds, names) {
@@ -268,9 +337,16 @@ async function buildHouse(houseId, roomIds, names) {
   // Chân nhà (đảo cỏ nhỏ dưới nhà) nằm cao hơn mép dưới ảnh khoảng 17%
   mesh.position.set(wx(plot.x), wy(plot.y) - hh * 0.17, depth(plot.y));
   mesh.renderOrder = Math.round(plot.y * 10);
+  if (HD) {
+    // tâm xoay ở chân nhà để khi quay camera nhà xoay tại chỗ
+    mesh.geometry.translate(0, -hh * 0.17, 0);
+    mesh.position.set(wx(plot.x), 0, gz(plot.y));
+    mesh.scale.y = YK;
+    standees.push({ obj: mesh, x: plot.x, y: plot.y - 8 });
+  }
   mesh.userData.agentId = roomIds[0];
   mesh.userData.mask = alphaMask(tex);
-  sign.position.set(0, hh * 1.02, 0);
+  sign.position.set(0, hh * (HD ? 0.86 : 1.02), 0);
   mesh.add(sign);
   scene.add(mesh);
   clickable.push(mesh);
@@ -321,6 +397,13 @@ function buildPerson(a) {
   const p = { group: g, body, shadow, nameTag, bubble, bubbleDiv, data: a, H, W, phase: Math.random() * 6,
     route: [], pos: null, dir: { x: 0, y: 1 }, walking: false, sprite: null, pose: 'front', flip: false, goal: null };
   people[a.id] = p;
+  if (HD) {
+    shadow.rotation.x = -Math.PI / 2;
+    shadow.scale.set(W * 0.75, W * 0.4, 1);
+    shadow.position.y = 1;
+    g.scale.y = YK;
+    standees.push({ obj: g, get x() { return p.pos?.x ?? 0; }, get y() { return p.pos?.y ?? 0; }, sprite: () => p.sprite, shadow });
+  }
   if (toy) {
     // Bản 3D: bỏ sprite, dựng nhân vật chibi; tên và bong bóng gắn trên đầu
     scene.remove(g);
@@ -511,11 +594,12 @@ document.addEventListener('click', e => {
 let drift = false;
 const toggles = {
   rotate: b => { drift = !drift; if (toy) controls.autoRotate = drift; b.classList.toggle('on', drift); b.textContent = drift ? (toy ? 'Dừng xoay' : 'Dừng lướt') : (toy ? 'Xoay' : 'Lướt'); },
-  view: () => { try { localStorage.setItem('view', toy ? 'paint' : 'toy'); } catch {} location.href = location.pathname + '?view=' + (toy ? 'paint' : 'toy'); },
+  view: () => { const next = HD ? 'paint' : 'hd'; try { localStorage.setItem('view', next); } catch {} location.href = location.pathname + '?view=' + next; },
   names: b => { b.classList.toggle('on', !document.body.classList.toggle('hide-names')); },
   bubbles: b => { b.classList.toggle('on', !document.body.classList.toggle('hide-bubbles')); },
   home: () => {
     if (toy) return toy.home();
+    if (HD) return hdHome();
     camera.position.set(0, 0, 200); camera.zoom = 1; camera.updateProjectionMatrix(); controls.target.set(0, 0, 0);
   },
   overview: b => b.classList.toggle('on', !$('#overview').classList.toggle('hidden')),
@@ -527,8 +611,9 @@ const toggles = {
     if (first) post('/api/decide', { id: first, approve: true });
   },
 };
-$('#btn-view').textContent = toy ? 'Kiểu tranh' : 'Kiểu 3D';
+$('#btn-view').textContent = HD ? 'Kiểu phẳng' : toy ? 'Kiểu tranh' : 'Kiểu 2.5D';
 $('#btn-rotate').textContent = toy ? 'Xoay' : 'Lướt';
+if (HD) $('#credits .only-paint').textContent = 'three.js 2.5D · tranh anime vẽ tay · kéo để xoay, chuột phải để di chuyển, cuộn để phóng to';
 document.querySelectorAll('[data-act]').forEach(b => b.addEventListener('click', () => toggles[b.dataset.act](b)));
 if (innerWidth < 760) {
   for (const k of ['overview', 'log']) { $('#' + k).classList.add('hidden'); document.querySelector(`[data-act=${k}]`).classList.remove('on'); }
@@ -672,6 +757,7 @@ function stepPerson(p, dt, t) {
     const breathe = 1 + Math.sin(t * 2 + p.phase) * 0.012;
     b.scale.set(1 / breathe, breathe, 1);
   }
+  if (HD) { p.group.position.set(wx(p.pos.x), 0, gz(p.pos.y)); return; }
   p.group.position.set(wx(p.pos.x), wy(p.pos.y), depth(p.pos.y) + 0.01);
   const ro = Math.round(p.pos.y * 10) + 1;
   if (p.sprite) p.sprite.renderOrder = ro;
@@ -687,12 +773,18 @@ function tick(now) {
   const dt = Math.min(clock.getDelta(), 0.05);
   const t = clock.elapsedTime;
   for (const p of Object.values(people)) stepPerson(p, dt, t);
-  if (drift && !toy) {
+  if (drift && HD) {
+    // lướt: camera đung đưa chậm sang hai bên
+    const want = Math.sin(t * 0.12) * 0.4, az = controls.getAzimuthalAngle();
+    const off = camera.position.clone().sub(controls.target).applyAxisAngle(THREE.Object3D.DEFAULT_UP, (want - az) * Math.min(1, dt * 1.5));
+    camera.position.copy(controls.target).add(off);
+  } else if (drift && !toy) {
     const ox = Math.sin(t * 0.08) * 0.35 * dt * 60, oy = Math.cos(t * 0.11) * 0.15 * dt * 60;
     camera.position.x += ox; controls.target.x += ox;
     camera.position.y += oy; controls.target.y += oy;
   }
   controls.update();
+  if (HD) hdUpdate();
   clampView();
   renderer.render(scene, camera);
   labels.render(scene, camera);
