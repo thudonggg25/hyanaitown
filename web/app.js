@@ -301,13 +301,19 @@ function buildPerson(a) {
   bubbleDiv.className = 'bubble3d';
   const bubble = new CSS2DObject(bubbleDiv);
   bubble.position.set(0, H + 34, 0);
-  g.add(nameTag, bubble);
+  const zzzDiv = document.createElement('div');
+  zzzDiv.className = 'zzz';
+  zzzDiv.innerHTML = '<span>z</span><span>z</span><span>Z</span>';
+  const zzz = new CSS2DObject(zzzDiv);
+  zzz.position.set(-W * 0.35, H * 0.62, 0);
+  zzz.visible = false;
+  g.add(nameTag, bubble, zzz);
   scene.add(g);
 
   const p = { group: g, body, shadow, nameTag, bubble, bubbleDiv, data: a, H, W, phase: Math.random() * 6,
     route: [], pos: null, dir: { x: 0, y: 1 }, walking: false, sprite: null, walkSprite: null,
     want: { pose: 'front', flip: false }, shown: null, turn: null, goal: null,
-    stride: 0, gait: 0, look: null, hop: 0, settle: 0 };
+    stride: 0, gait: 0, look: null, hop: 0, settle: 0, zzz, sleepSprite: null, sleep: null };
   people[a.id] = p;
   (charTex[cid] ||= loadTex(info.file, true)).then(base => {
     if (!base) return;
@@ -320,6 +326,19 @@ function buildPerson(a) {
     clickable.push(sprite);
     p.sprite = sprite;
     showPose(p, p.want);
+  });
+  // Dáng nằm ngủ giữa sân (nếu đã có ảnh)
+  if (info.sleep) (charTex[cid + ':sleep'] ||= loadTex(info.sleep.file, true)).then(base => {
+    if (!base) return;
+    const sw = H * 1.15, sh = sw * base.image.height / base.image.width;
+    const ss = spriteMesh(base, sw, sh);
+    ss.position.y = -sh * 0.25; // chân ảnh (mép tấm chăn) hơi thấp hơn điểm đứng
+    ss.userData.agentId = a.id;
+    ss.userData.mask = alphaMask(base);
+    ss.visible = false;
+    body.add(ss);
+    clickable.push(ss);
+    p.sleepSprite = ss;
   });
   // Bảng dáng đi nhiều khung (nếu đã có ảnh): mỗi hàng một hướng, mỗi cột một khung
   const wk = info.walk;
@@ -402,6 +421,7 @@ function goTo(p, a) {
   if (p.goal && Math.abs(p.goal.x - s.x) < 1 && Math.abs(p.goal.y - s.y) < 1) return;
   const sameHouse = p.goal && p.goal.house && p.goal.house === s.house;
   p.goal = s;
+  if (p.sleep) wakeUp(p);
   p.wander = null; p.speed = SPEED;
   if (sameHouse || Math.hypot(s.x - p.pos.x, s.y - p.pos.y) < 120) { p.route = [s]; return; }
   p.route = [plazaEdge(p.pos), plazaEdge(s), s];
@@ -627,28 +647,25 @@ const SPEED = 150; // pixel bản đồ mỗi giây
 const STROLL = 60;  // đi dạo thì chậm hơn
 const STEP_LEN = 22; // mỗi bước dài bao nhiêu pixel bản đồ
 
-// Lúc rảnh thì đi dạo: quanh nhà mình, ra quảng trường, thỉnh thoảng ghé nhà bạn
+// Lúc rảnh: đứng chơi một lúc trước cửa, rồi ra giữa sân nằm ngủ. Có việc thì dậy, chạy về làm.
 const canWander = a => (a.state === 'idle' || a.state === 'done') && a.at === a.home;
 const rnd = (a, b) => a + Math.random() * (b - a);
-function planWander(p, t) {
-  const home = p.goal;
-  const others = Object.entries(houses).filter(([id]) => id !== home.house);
-  const r = Math.random();
-  let dest, route;
-  if (r < 0.5) {
-    dest = { x: home.x + rnd(-70, 70), y: home.y + rnd(-10, 30) };
-    route = [dest];
-  } else if (r < 0.85 || !others.length) {
-    const ang = rnd(0, Math.PI * 2), k = Math.sqrt(Math.random()) * 0.85;
-    dest = { x: PLAZA.x + Math.cos(ang) * PLAZA.rx * k, y: PLAZA.y + Math.sin(ang) * PLAZA.ry * k };
-    route = [plazaEdge(p.pos), dest];
-  } else {
-    const h = others[Math.floor(Math.random() * others.length)][1];
-    dest = { x: h.door.x + rnd(-40, 40), y: h.door.y + rnd(0, 20) };
-    route = [plazaEdge(p.pos), plazaEdge(dest), dest];
-  }
-  p.wander = { until: t + rnd(4, 9) + Math.hypot(dest.x - p.pos.x, dest.y - p.pos.y) / STROLL * 1.5 };
-  p.route = route; p.speed = STROLL;
+// Chỗ nằm trên quảng trường (lệch so với tâm), mỗi người một chỗ cố định
+const BEDS = [[-95, -38], [10, -46], [110, -34], [-135, 4], [-40, 2], [60, 6], [150, 10], [-90, 44], [15, 50], [115, 46]];
+function bedFor(p) {
+  const i = Object.keys(people).indexOf(p.data.id) % BEDS.length;
+  return { x: PLAZA.x + BEDS[i][0], y: PLAZA.y + BEDS[i][1] };
+}
+function goSleep(p, t) {
+  const bed = bedFor(p);
+  p.route = Math.hypot(bed.x - p.pos.x, bed.y - p.pos.y) < 120 ? [bed] : [plazaEdge(p.pos), bed];
+  p.speed = STROLL;
+  p.wander = { phase: 'going' };
+}
+function wakeUp(p) {
+  p.sleep = null;
+  p.kick = 1.6; // bật dậy
+  p.stopAt = clock.elapsedTime;
 }
 function goHome(p, speed) {
   const s = p.goal;
@@ -660,13 +677,15 @@ function stepPerson(p, dt, t) {
   if (!p.pos) return;
   const st = p.data.state;
   if (p.goal) {
-    // Có việc thì đi nhanh về chỗ; rảnh thì nghỉ một lúc rồi đi dạo tiếp
-    if (!canWander(p.data)) { if (p.wander) { p.wander = null; goHome(p, SPEED); } }
-    else if (!p.wander) p.wander = { until: t + rnd(2, 8) };
-    else if (!p.route.length && t > p.wander.until) {
-      if (Math.random() < 0.3) { goHome(p, STROLL); p.wander.until = t + rnd(8, 16); }
-      else planWander(p, t);
-    }
+    const w = p.wander;
+    if (!canWander(p.data)) {
+      // Có việc: đang ngủ thì dậy, vươn vai một chút rồi đi nhanh về chỗ
+      if (p.sleep) { wakeUp(p); p.wander = { phase: 'waking', until: t + 0.7 }; p.route = []; }
+      else if (w && (w.phase !== 'waking' || t > w.until)) { p.wander = null; goHome(p, SPEED); }
+    } else if (!w) p.wander = { phase: 'idle', until: t + rnd(5, 12) };
+    else if (w.phase === 'idle' && t > w.until && !p.route.length) goSleep(p, t);
+    else if (w.phase === 'going' && !p.route.length && !p.walking) { p.sleep = { since: t }; w.phase = 'sleeping'; }
+    else if (w.phase === 'waking' && t > w.until) { p.wander = null; goHome(p, SPEED); }
   }
   // Vận tốc đổi dần (tăng tốc, giảm tốc, ôm cua) thay vì giật theo đường thẳng
   const v = p.vel ||= { x: 0, y: 0 };
@@ -766,12 +785,27 @@ function stepPerson(p, dt, t) {
       ws.scale.x = walkFlip ? -1 : 1;
     }
   }
+  const asleep = !!p.sleep;
+  const lying = asleep && !!p.sleepSprite;
+  if (p.sleepSprite) p.sleepSprite.visible = lying;
+  if (lying) {
+    if (p.sprite) p.sprite.visible = false;
+    if (p.walkSprite) p.walkSprite.visible = false;
+    const br = Math.sin(t * 1.7 + p.phase) * 0.018; // thở chậm, ngực phồng xẹp
+    b.position.y = 0; b.rotation.z = 0;
+    b.scale.set(1 - br * 0.5, 1 + br, 1);
+  }
+  p.zzz.visible = asleep;
+  p.zzz.position.y = lying ? p.H * 0.62 : p.H + 10;
+  p.bubbleDiv.style.visibility = asleep ? 'hidden' : '';
+  p.nameTag.position.y = lying ? p.H * 0.75 : p.H + 8;
   const lift = 1 - Math.min(0.35, bob / 40); // nhảy lên thì bóng nhỏ lại
-  p.shadow.scale.set(p.W * 0.7 * lift, p.H * 0.16 * lift, 1);
+  p.shadow.scale.set(p.W * (lying ? 1.5 : 0.7) * lift, p.H * (lying ? 0.3 : 0.16) * lift, 1);
   p.group.position.set(wx(p.pos.x), wy(p.pos.y), depth(p.pos.y) + 0.01);
   const ro = Math.round(p.pos.y * 10) + 1;
   if (p.sprite) p.sprite.renderOrder = ro;
   if (p.walkSprite) p.walkSprite.renderOrder = ro;
+  if (p.sleepSprite) p.sleepSprite.renderOrder = ro;
   p.shadow.renderOrder = ro - 1;
 }
 

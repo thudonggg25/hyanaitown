@@ -63,3 +63,6 @@ hyan chốt: làm **web game** three.js (không làm client riêng), đội AI �
 - Ảnh do Claude tự vẽ bằng skill `create-image` (9router codex-image). Ảnh gốc ở `F:\AI-Workspace\hyanaitown-anh-2026-10-21\` (có `ve_buoc_di.sh`). Ảnh mẫu tham chiếu phải là PNG nền trắng (`ref/<mã>.png`) kèm mô tả chữ; dùng webp trong suốt thì model bỏ qua ảnh mẫu và vẽ sai người.
 - Dáng đi: `python tools/lam_buoc_di.py <thư mục ảnh> <mã>...` (6 khung mỗi hướng, xuống/lên/trái; `coder-b=coder`, `khach=tiep-nhan` dùng chung).
 - Giao diện vẽ tay: `python tools/lam_ui.py <thư mục ảnh>` cắt icon, nút 4 màu × 4 trạng thái, khung bảng, thẻ thông báo, biển gỗ ra `web/assets/ui/`; CSS dùng `border-image` ở cuối `web/style.css`.
+- Đổi hướng kiểu game 2D: đổi khung ngay, không bóp hình (hyan chê bóp trông như tờ giấy); quay ngược hẳn thì qua khung nhìn thẳng 0,075 giây.
+- Bảng "Cài đặt thông báo" (`web/settings.js`, nút Thông báo): bật/tắt thông báo và tiếng cho từng loại, chọn tiếng, tải tệp âm thanh lên (`POST /api/sounds/upload`, lưu `data/am-thanh/`), nhạc nền từ tệp của bạn, báo ra màn hình khi ở tab khác. Cài đặt lưu `data/am-thanh.json`.
+- Rảnh (idle/done, ở nhà) 5-12 giây thì ra quảng trường nằm ngủ trên tấm chăn (`BEDS`, ảnh `nv/<mã>-ngu.webp` làm bằng `tools/lam_ngu.py`), có Zzz; có việc thì bật dậy rồi chạy về.

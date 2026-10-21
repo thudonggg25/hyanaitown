@@ -261,3 +261,11 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); c
 #settings button.mini.no { border-image-source: url(assets/ui/btn-red-normal.webp); color: #fff; }
 #settings button.close { border: 0; border-image: none; }
 @media (max-width: 760px) { #settings input[type=range] { width: 140px; } #settings table.events th:nth-child(4), #settings table.events td:nth-child(4) { max-width: 120px; } }
+
+/* Ngủ: chữ z bay lên rồi mờ dần */
+.zzz { pointer-events: none; font-weight: 800; color: #6c7fb8; text-shadow: 0 0 3px #fff, 0 0 6px #fff; height: 0; }
+.zzz span { position: absolute; left: 0; bottom: 0; opacity: 0; animation: zzz 3s infinite; font-size: 13px; }
+.zzz span:nth-child(2) { animation-delay: 1s; font-size: 16px; }
+.zzz span:nth-child(3) { animation-delay: 2s; font-size: 20px; }
+@keyframes zzz { 0% { transform: translate(0, 0); opacity: 0; } 20% { opacity: 1; } 100% { transform: translate(18px, -38px); opacity: 0; } }
+.hide-bubbles .zzz { display: none; }

@@ -60,6 +60,9 @@
      "up",
      "left"
     ]
+   },
+   "sleep": {
+    "file": "nv/calm-ngu.webp"
    }
   },
   "anicca": {
@@ -80,6 +83,9 @@
      "up",
      "left"
     ]
+   },
+   "sleep": {
+    "file": "nv/anicca-ngu.webp"
    }
   },
   "coder": {
@@ -100,6 +106,9 @@
      "up",
      "left"
     ]
+   },
+   "sleep": {
+    "file": "nv/coder-ngu.webp"
    }
   },
   "coder-b": {
@@ -120,6 +129,9 @@
      "up",
      "left"
     ]
+   },
+   "sleep": {
+    "file": "nv/coder-ngu.webp"
    }
   },
   "thiet-ke": {
@@ -140,6 +152,9 @@
      "up",
      "left"
     ]
+   },
+   "sleep": {
+    "file": "nv/thiet-ke-ngu.webp"
    }
   },
   "san-pham": {
@@ -160,6 +175,9 @@
      "up",
      "left"
     ]
+   },
+   "sleep": {
+    "file": "nv/san-pham-ngu.webp"
    }
   },
   "tiep-nhan": {
@@ -180,6 +198,9 @@
      "up",
      "left"
     ]
+   },
+   "sleep": {
+    "file": "nv/tiep-nhan-ngu.webp"
    }
   },
   "qa": {
@@ -200,6 +221,9 @@
      "up",
      "left"
     ]
+   },
+   "sleep": {
+    "file": "nv/qa-ngu.webp"
    }
   },
   "khach": {
@@ -220,6 +244,9 @@
      "up",
      "left"
     ]
+   },
+   "sleep": {
+    "file": "nv/tiep-nhan-ngu.webp"
    }
   }
  }
