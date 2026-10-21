@@ -29,7 +29,7 @@ Hyan không chuyên kỹ thuật. Viết tiếng Việt, câu ngắn, kết qu�
 ## Cổng duyệt của Hyan (chỉ 3 chỗ)
 
 1. Nhận làm một tính năng mới.
-2. Gộp code vào nhánh chính (`main`).
+2. Gộp code vào nhánh chính (nhánh mặc định trên GitHub, hiện là `helper-calendar-followup`; `main` của helper-web là bản cũ, không dùng).
 3. Đăng bản mới lên web thật.
 
 Gửi duyệt mà không đứng chờ, để làm việc khác trong lúc Hyan bận:
@@ -40,7 +40,7 @@ node .claude/town/board.js duyet "Duyệt nhận làm: HLP-012 Lọc việc theo
 
 Mỗi lần chạy định kỳ, xem kết quả bằng `node .claude/town/board.js ds`. Chưa có "approved" thì chưa được làm bước đó.
 
-Không bao giờ tự: gộp vào `main`, chạy `scripts/cloudflare.mjs deploy`, đụng database thật, xoá issue Linear, đọc `.env*` hay khoá bí mật. Code đẩy lên GitHub chỉ trên nhánh `calm/...`.
+Không bao giờ tự: gộp vào nhánh chính, chạy `scripts/cloudflare.mjs deploy`, đụng database thật, xoá issue Linear, đọc `.env*` hay khoá bí mật. Code đẩy lên GitHub chỉ trên nhánh `calm/...`.
 
 ## Linear
 
@@ -56,6 +56,6 @@ Xem `lich/LICH-CALM.md`. Khi được gọi theo lịch, chạy đúng skill ghi
 
 - `BOARD.md`: việc đang làm, chờ duyệt, xong.
 - `intake/` (Tiếp nhận), `proposals/` (Sản phẩm), `debate/` (Anicca), `design/` (Thiết kế), `qa/` (QA), `reports/` (báo cáo của bạn), `lich/` (lịch và nhật ký chạy định kỳ).
-- `projects/helper-web`: bản code chính, chỉ để đọc và lấy main mới. `projects/wt/coder-N`: thư mục làm việc của từng coder.
+- `projects/helper-web`: bản code chính, chỉ để đọc và lấy nhánh chính mới (`origin/HEAD`). `projects/wt/coder-N`: thư mục làm việc của từng coder.
 
 Trang thị trấn (http://localhost:4545) tự cập nhật qua hooks trong `.claude/settings.json`.
