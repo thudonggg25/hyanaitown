@@ -1,5 +1,10 @@
-// Thị trấn AI agent: phần hình 3D và bảng điều khiển.
+// Thị trấn AI agent: phần hình 2.5D (anime vẽ tay) và bảng điều khiển.
 // Đọc trạng thái từ server (Server-Sent Events) rồi vẽ nhà, nhân vật, bong bóng.
+//
+// Cách vẽ: bản đồ đảo là một tấm ảnh phẳng, nhà và nhân vật là sprite (ảnh nền
+// trong suốt) dựng đứng trên đó. Toạ độ dùng đúng pixel của ảnh bản đồ 1920×1080
+// (x sang phải, y xuống dưới). Thứ tự vẽ theo y: cái nào thấp hơn trên màn hình
+// thì ở trước. Sprite tạo bằng tools/lam_sprite.py.
 import * as THREE from 'three';
 import { OrbitControls } from './vendor/addons/OrbitControls.js';
 import { CSS2DRenderer, CSS2DObject } from './vendor/addons/CSS2DRenderer.js';
@@ -7,12 +12,35 @@ import { CSS2DRenderer, CSS2DObject } from './vendor/addons/CSS2DRenderer.js';
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
-// ---------- Cảnh 3D ----------
+const SPR = 'assets/sprites/';
+const MAP_W = 1920, MAP_H = 1080;
+
+// Ô đất trên bản đồ (pixel ảnh). x, y là tâm chân nhà; w là bề ngang nhà khi vẽ.
+const PLOTS = {
+  calm:        { x: 994,  y: 236, w: 330 },
+  'san-pham':  { x: 655,  y: 300, w: 300 },
+  'thiet-ke':  { x: 1335, y: 300, w: 300 },
+  'tiep-nhan': { x: 420,  y: 440, w: 300 },
+  qa:          { x: 1530, y: 450, w: 190 },
+  anicca:      { x: 720,  y: 668, w: 360 },
+  coder:       { x: 1300, y: 672, w: 420 },
+};
+const PLAZA = { x: 994, y: 415, rx: 170, ry: 80 };
+// Phòng -> nhà, phòng -> nhân vật (3 Coder ở chung một xưởng)
+const houseOf = id => (id.startsWith('coder') ? 'coder' : id);
+const CHAR_OF = { calm: 'calm', anicca: 'anicca', 'tiep-nhan': 'tiep-nhan', 'san-pham': 'san-pham', 'thiet-ke': 'thiet-ke', qa: 'qa', 'coder-1': 'coder', 'coder-2': 'coder-b', 'coder-3': 'coder' };
+const POSE = { front: 0, back: 1, left: 2, walk: 3 };
+const CHAR_H = 86; // chiều cao nhân vật trên bản đồ (pixel ảnh)
+
+// pixel bản đồ -> toạ độ thế giới
+const wx = x => x - MAP_W / 2;
+const wy = y => MAP_H / 2 - y;
+const depth = y => y / MAP_H * 50; // càng xuống dưới càng gần camera
+
+// ---------- Cảnh ----------
 const host = $('#scene');
-const renderer = new THREE.WebGLRenderer({ antialias: true });
+const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 host.appendChild(renderer.domElement);
 
 const labels = new CSS2DRenderer();
@@ -22,34 +50,28 @@ labels.domElement.style.pointerEvents = 'none';
 host.appendChild(labels.domElement);
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color('#cfe8d5');
+scene.background = new THREE.Color('#e9c9d8'); // màu trời ngoài mép ảnh (màn hình dọc)
 
-// Camera chéo kiểu isometric
-const VIEW = 17;
-const camera = new THREE.OrthographicCamera(-VIEW, VIEW, VIEW, -VIEW, 0.1, 500);
-const HOME_POS = new THREE.Vector3(40, 38, 40);
-camera.position.copy(HOME_POS);
+const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 400);
+camera.position.set(0, 0, 200);
 const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableRotate = false;
+controls.screenSpacePanning = true;
 controls.enableDamping = true;
-controls.autoRotate = true;
-controls.autoRotateSpeed = 0.35;
-controls.maxPolarAngle = Math.PI * 0.42;
-controls.minZoom = 0.6;
-controls.maxZoom = 3;
+controls.dampingFactor = 0.12;
+controls.mouseButtons = { LEFT: THREE.MOUSE.PAN, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN };
+controls.touches = { ONE: THREE.TOUCH.PAN, TWO: THREE.TOUCH.DOLLY_PAN };
+controls.minZoom = 0.9;
+controls.maxZoom = 3.2;
+controls.zoomToCursor = true;
 
-scene.add(new THREE.HemisphereLight('#ffffff', '#7da67f', 1.6));
-const sun = new THREE.DirectionalLight('#fff4e0', 2.2);
-sun.position.set(20, 40, 12);
-sun.castShadow = true;
-sun.shadow.mapSize.set(2048, 2048);
-Object.assign(sun.shadow.camera, { left: -35, right: 35, top: 35, bottom: -35 });
-scene.add(sun);
-
+let halfW = MAP_W / 2, halfH = MAP_H / 2;
 function resize() {
   const w = innerWidth, h = innerHeight, a = w / h;
-  // Màn hình dọc (điện thoại): nới khung để thấy đủ cả vòng nhà
-  const v = Math.max(VIEW, 19 / a);
-  Object.assign(camera, { left: -v * a, right: v * a, top: v, bottom: -v });
+  // Màn hình ngang: phủ kín khung bằng ảnh. Màn hình dọc: giữ đủ bề ngang hòn đảo.
+  if (a >= MAP_W / MAP_H) { halfW = MAP_W / 2; halfH = halfW / a; }
+  else { halfH = MAP_H / 2; halfW = halfH * a; if (halfW < 500) { halfW = 500; halfH = halfW / a; } }
+  Object.assign(camera, { left: -halfW, right: halfW, top: halfH, bottom: -halfH });
   camera.updateProjectionMatrix();
   renderer.setSize(w, h);
   labels.setSize(w, h);
@@ -57,42 +79,76 @@ function resize() {
 addEventListener('resize', resize);
 resize();
 
-const mat = c => new THREE.MeshStandardMaterial({ color: c, roughness: 0.85 });
-function mesh(geo, color, { cast = true, receive = true } = {}) {
-  const m = new THREE.Mesh(geo, typeof color === 'string' ? mat(color) : color);
-  m.castShadow = cast; m.receiveShadow = receive;
+// Không cho kéo camera ra khỏi bản đồ
+function clampView() {
+  const vw = halfW / camera.zoom, vh = halfH / camera.zoom;
+  const mx = Math.max(0, MAP_W / 2 - vw), my = Math.max(0, MAP_H / 2 - vh);
+  const t = controls.target;
+  const cx = THREE.MathUtils.clamp(t.x, -mx, mx), cy = THREE.MathUtils.clamp(t.y, -my, my);
+  if (cx !== t.x || cy !== t.y) {
+    camera.position.x += cx - t.x; camera.position.y += cy - t.y;
+    t.x = cx; t.y = cy;
+  }
+}
+
+// ---------- Ảnh ----------
+const loader = new THREE.TextureLoader();
+const maskCache = new Map(); // ảnh -> mặt nạ alpha nhỏ để bấm trúng đúng hình, không trúng nền trong
+function loadTex(file) {
+  return new Promise(res => loader.load(SPR + file, t => {
+    t.colorSpace = THREE.SRGBColorSpace;
+    t.anisotropy = 4;
+    res(t);
+  }, undefined, () => res(null)));
+}
+function alphaMask(tex) {
+  if (!tex?.image) return null;
+  if (maskCache.has(tex.image)) return maskCache.get(tex.image);
+  const w = 96, h = Math.max(8, Math.round(96 * tex.image.height / tex.image.width));
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const g = c.getContext('2d', { willReadFrequently: true });
+  g.drawImage(tex.image, 0, 0, w, h);
+  const d = g.getImageData(0, 0, w, h).data;
+  const m = { w, h, a: new Uint8Array(w * h) };
+  for (let i = 0; i < w * h; i++) m.a[i] = d[i * 4 + 3];
+  maskCache.set(tex.image, m);
   return m;
 }
-
-// Mặt đất, quảng trường, cây
-const R = 13; // bán kính vòng nhà
-const ground = mesh(new THREE.CylinderGeometry(30, 31, 1, 64), '#9fd18f', { cast: false });
-ground.position.y = -0.5;
-scene.add(ground);
-const plaza = mesh(new THREE.CylinderGeometry(6.5, 6.5, 0.12, 48), '#e9dfc9', { cast: false });
-plaza.position.y = 0.06;
-scene.add(plaza);
-
-function tree(x, z, s = 1) {
-  const g = new THREE.Group();
-  const trunk = mesh(new THREE.CylinderGeometry(0.18 * s, 0.24 * s, 1 * s, 8), '#8a6a43');
-  trunk.position.y = 0.5 * s;
-  const top = mesh(new THREE.ConeGeometry(0.9 * s, 2 * s, 8), ['#4f9a5a', '#5aab61', '#3f8a4f'][Math.floor(Math.random() * 3)]);
-  top.position.y = 1.9 * s;
-  g.add(trunk, top);
-  g.position.set(x, 0, z);
-  scene.add(g);
-}
-for (let i = 0; i < 46; i++) {
-  const a = Math.random() * Math.PI * 2, r = 19 + Math.random() * 9;
-  tree(Math.cos(a) * r, Math.sin(a) * r, 0.7 + Math.random() * 0.6);
+function hitOpaque(hit) {
+  const tex = hit.object.material.map, m = hit.object.userData.mask;
+  if (!m || !hit.uv) return true;
+  const u = tex.offset.x + hit.uv.x * tex.repeat.x;
+  const v = 1 - (tex.offset.y + hit.uv.y * tex.repeat.y);
+  const x = Math.min(m.w - 1, Math.max(0, Math.floor(u * m.w))), y = Math.min(m.h - 1, Math.max(0, Math.floor(v * m.h)));
+  return m.a[y * m.w + x] > 40;
 }
 
-// ---------- Nhà và nhân vật ----------
-const houses = {};   // roomId -> { group, front: Vector3, angle }
-const people = {};   // agentId -> { group, body, bubble, label, target, data, walkT }
+function spriteMesh(tex, w, h) {
+  const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, depthTest: false, alphaTest: 0.02 });
+  const geo = new THREE.PlaneGeometry(w, h);
+  geo.translate(0, h / 2, 0); // gốc ở chân
+  return new THREE.Mesh(geo, mat);
+}
+
+// Bóng mềm dưới chân (một texture dùng chung)
+const shadowTex = (() => {
+  const c = document.createElement('canvas'); c.width = c.height = 64;
+  const g = c.getContext('2d');
+  const gr = g.createRadialGradient(32, 32, 2, 32, 32, 32);
+  gr.addColorStop(0, 'rgba(40,30,30,.45)'); gr.addColorStop(1, 'rgba(40,30,30,0)');
+  g.fillStyle = gr; g.fillRect(0, 0, 64, 64);
+  return new THREE.CanvasTexture(c);
+})();
+const shadowMat = new THREE.MeshBasicMaterial({ map: shadowTex, transparent: true, depthWrite: false, depthTest: false });
+const shadowGeo = new THREE.PlaneGeometry(1, 1);
+
+// ---------- Bản đồ, nhà, nhân vật ----------
+const houses = {};   // houseId -> { mesh, door: {x,y}, plot }
+const people = {};   // agentId -> { ... }
 const clickable = [];
 let built = false;
+let meta = null;
+const charTex = {};  // charId -> Promise<Texture>
 
 function label(text, cls) {
   const div = document.createElement('div');
@@ -101,128 +157,138 @@ function label(text, cls) {
   return new CSS2DObject(div);
 }
 
-function buildHouse(roomId, def, angle) {
-  const g = new THREE.Group();
-  const body = mesh(new THREE.BoxGeometry(4.2, 3, 4.2), '#fbf3e4');
-  body.position.y = 1.5;
-  const roof = mesh(new THREE.ConeGeometry(3.4, 2.2, 4), def.roof || def.color);
-  roof.position.y = 4.1; roof.rotation.y = Math.PI / 4;
-  const door = mesh(new THREE.BoxGeometry(1, 1.7, 0.12), '#8a6a43');
-  door.position.set(0, 0.85, 2.12);
-  const winMat = mat('#bfe3f2');
-  for (const x of [-1.3, 1.3]) {
-    const w = mesh(new THREE.BoxGeometry(0.8, 0.8, 0.1), winMat);
-    w.position.set(x, 1.9, 2.12);
-    g.add(w);
-  }
-  const mat2 = mesh(new THREE.BoxGeometry(1.6, 0.05, 0.9), def.color);
-  mat2.position.set(0, 0.03, 2.8);
-  g.add(body, roof, door, mat2);
-  const sign = label(def.name, 'sign3d');
-  sign.position.set(0, 6.4, 0);
-  g.add(sign);
-  // Nhà quay cửa vào giữa quảng trường
-  const x = Math.cos(angle) * R, z = Math.sin(angle) * R;
-  g.position.set(x, 0, z);
-  g.lookAt(0, 0, 0);
-  g.userData.agentId = roomId;
-  body.userData.agentId = roomId; roof.userData.agentId = roomId;
-  clickable.push(body, roof);
-  scene.add(g);
-  // Đường lát từ quảng trường tới cửa
-  const path = mesh(new THREE.BoxGeometry(1.6, 0.08, R - 8.5), '#e3d6bb', { cast: false });
-  path.position.set(Math.cos(angle) * (R - 2.2) / 2 + Math.cos(angle) * 3.1, 0.04, Math.sin(angle) * (R - 2.2) / 2 + Math.sin(angle) * 3.1);
-  path.lookAt(0, 0.04, 0);
-  scene.add(path);
-  const front = new THREE.Vector3(Math.cos(angle) * (R - 3.8), 0, Math.sin(angle) * (R - 3.8));
-  houses[roomId] = { group: g, front, angle };
+async function buildMap() {
+  const tex = await loadTex('map.webp');
+  if (!tex) return;
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(MAP_W, MAP_H), new THREE.MeshBasicMaterial({ map: tex, depthWrite: false, depthTest: false }));
+  m.position.z = -10;
+  m.renderOrder = -1;
+  scene.add(m);
 }
 
-function buildBossDesk(color) {
-  const desk = mesh(new THREE.BoxGeometry(2.4, 0.9, 1.2), '#c9a36b');
-  desk.position.set(0, 0.45, -1.2);
-  const screen = mesh(new THREE.BoxGeometry(1.2, 0.8, 0.08), '#2b2a33');
-  screen.position.set(0, 1.35, -1.45);
-  const flag = mesh(new THREE.CylinderGeometry(0.05, 0.05, 3.5, 6), '#8a6a43');
-  flag.position.set(1.9, 1.75, -1.6);
-  const cloth = mesh(new THREE.BoxGeometry(1, 0.6, 0.04), color);
-  cloth.position.set(2.4, 3.2, -1.6);
-  scene.add(desk, screen, flag, cloth);
-  houses.__boss = { front: new THREE.Vector3(0, 0, 0), angle: Math.PI / 2 };
-}
-
-function buildPerson(a) {
-  const g = new THREE.Group();
-  const s = a.isGuest ? 0.85 : 1;
-  const body = mesh(new THREE.CapsuleGeometry(0.45 * s, 0.7 * s, 4, 12), a.color);
-  body.position.y = 0.9 * s;
-  const head = mesh(new THREE.SphereGeometry(0.42 * s, 16, 12), '#f6d3b3');
-  head.position.y = 1.85 * s;
-  const eyeMat = mat('#2b2a33');
-  for (const x of [-0.14, 0.14]) {
-    const e = mesh(new THREE.SphereGeometry(0.05 * s, 8, 6), eyeMat, { cast: false });
-    e.position.set(x * s, 1.9 * s, 0.38 * s);
-    g.add(e);
-  }
-  const hat = a.isBoss
-    ? mesh(new THREE.CylinderGeometry(0.32, 0.4, 0.35, 5), '#f2b134')
-    : mesh(new THREE.SphereGeometry(0.44 * s, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2), new THREE.Color(a.color).multiplyScalar(0.7).getStyle());
-  hat.position.y = a.isBoss ? 2.35 : 1.95 * s;
-  const inner = new THREE.Group();
-  inner.add(body, head, hat);
-  g.add(inner);
-  for (const m of [body, head, hat]) { m.userData.agentId = a.id; clickable.push(m); }
-
-  const nameTag = label(a.name, 'label3d');
-  nameTag.position.set(0, 2.6, 0);
-  const bubbleDiv = document.createElement('div');
-  bubbleDiv.className = 'bubble3d';
-  const bubble = new CSS2DObject(bubbleDiv);
-  bubble.position.set(0, 3.2, 0);
-  g.add(nameTag, bubble);
-  g.scale.setScalar(1.35);
-  scene.add(g);
-
-  const p = { group: g, nameTag, inner, bubble, bubbleDiv, target: new THREE.Vector3(), data: a, phase: Math.random() * 6, walking: false };
-  people[a.id] = p;
-  return p;
-}
-
-// Vị trí đứng: trước cửa nhà mình, hoặc trước cửa nhà đang tới bàn giao
-let guestIndex = 0;
-const guestSpot = {};
-function spotFor(a) {
-  if (a.isBoss) return new THREE.Vector3(0, 0, 0);
-  if (a.isGuest && a.at === a.home) {
-    if (guestSpot[a.id] === undefined) guestSpot[a.id] = guestIndex++;
-    const ang = guestSpot[a.id] * 1.1 + 0.4;
-    return new THREE.Vector3(Math.cos(ang) * 3.6, 0, Math.sin(ang) * 3.6);
-  }
-  const h = houses[a.at] || houses[a.home];
-  if (!h) return new THREE.Vector3();
-  const v = h.front.clone();
-  if (a.at !== a.home) {
-    // khách đứng lệch sang một bên cửa
-    const side = new THREE.Vector3(-Math.sin(h.angle), 0, Math.cos(h.angle)).multiplyScalar(1.3);
-    v.add(side);
-  }
-  return v;
+async function buildHouse(houseId, roomIds, names) {
+  const plot = PLOTS[houseId];
+  const b = meta.buildings[houseId];
+  const h = { plot, door: { x: plot.x - plot.w * 0.06, y: plot.y + 22 }, rooms: roomIds };
+  houses[houseId] = h;
+  const sign = label(names, 'sign3d');
+  if (!b) return;
+  const tex = await loadTex(b.file);
+  if (!tex) return;
+  const w = plot.w, hh = w * b.h / b.w;
+  const mesh = spriteMesh(tex, w, hh);
+  // Chân nhà (đảo cỏ nhỏ dưới nhà) nằm cao hơn mép dưới ảnh khoảng 17%
+  mesh.position.set(wx(plot.x), wy(plot.y) - hh * 0.17, depth(plot.y));
+  mesh.renderOrder = Math.round(plot.y * 10);
+  mesh.userData.agentId = roomIds[0];
+  mesh.userData.mask = alphaMask(tex);
+  sign.position.set(0, hh * 1.02, 0);
+  mesh.add(sign);
+  scene.add(mesh);
+  clickable.push(mesh);
+  h.mesh = mesh;
 }
 
 function build(state) {
   const defs = {};
   for (const a of state.agents) defs[a.id] = a;
-  const rooms = state.rooms.filter(r => r !== state.boss);
-  rooms.forEach((r, i) => {
-    const angle = (i / rooms.length) * Math.PI * 2 - Math.PI / 2;
-    const def = { ...defs[r] };
-    buildHouse(r, { name: def.name, color: def.color, roof: shade(def.color) }, angle);
-  });
-  houses[state.boss] = { front: new THREE.Vector3(0, 0, 0), angle: Math.PI / 2 };
-  buildBossDesk(defs[state.boss]?.color || '#f2b134');
+  const groups = {};
+  for (const r of state.rooms) (groups[houseOf(r)] ||= []).push(r);
+  for (const [hid, rooms] of Object.entries(groups)) {
+    if (!PLOTS[hid]) continue;
+    const names = hid === 'coder' && rooms.length > 1 ? 'Xưởng Code' : rooms.map(r => defs[r]?.name || r).join(' · ');
+    buildHouse(hid, rooms, names);
+  }
   built = true;
 }
-function shade(hex) { return new THREE.Color(hex).multiplyScalar(0.72).getStyle(); }
+
+function charFor(a) {
+  if (CHAR_OF[a.id]) return CHAR_OF[a.id];
+  if (a.isGuest) return 'khach';
+  return meta.chars[houseOf(a.id)] ? houseOf(a.id) : 'khach';
+}
+
+function buildPerson(a) {
+  const cid = charFor(a);
+  const info = meta.chars[cid];
+  const scale = a.isGuest ? 0.85 : 1;
+  const H = CHAR_H * scale, W = H * info.cellW / info.cellH;
+  const g = new THREE.Group();
+  const shadow = new THREE.Mesh(shadowGeo, shadowMat);
+  shadow.scale.set(W * 0.7, H * 0.16, 1);
+  shadow.position.y = 2;
+  const body = new THREE.Group(); // nhún nhảy riêng phần người
+  g.add(shadow, body);
+
+  const nameTag = label(a.name, 'label3d');
+  nameTag.position.set(0, H + 8, 0);
+  const bubbleDiv = document.createElement('div');
+  bubbleDiv.className = 'bubble3d';
+  const bubble = new CSS2DObject(bubbleDiv);
+  bubble.position.set(0, H + 34, 0);
+  g.add(nameTag, bubble);
+  scene.add(g);
+
+  const p = { group: g, body, shadow, nameTag, bubble, bubbleDiv, data: a, H, W, phase: Math.random() * 6,
+    route: [], pos: null, dir: { x: 0, y: 1 }, walking: false, sprite: null, pose: 'front', flip: false, goal: null };
+  people[a.id] = p;
+  (charTex[cid] ||= loadTex(info.file)).then(base => {
+    if (!base) return;
+    const tex = base.clone(); // dùng chung ảnh, mỗi người một khung hình riêng
+    tex.repeat.set(1 / info.poses.length, 1);
+    const sprite = spriteMesh(tex, W, H);
+    sprite.userData.agentId = a.id;
+    sprite.userData.mask = alphaMask(base);
+    body.add(sprite);
+    clickable.push(sprite);
+    p.sprite = sprite;
+    setPose(p, p.pose, p.flip, true);
+  });
+  return p;
+}
+
+function setPose(p, pose, flip, force) {
+  if (!p.sprite || (!force && p.pose === pose && p.flip === flip)) { p.pose = pose; p.flip = flip; return; }
+  p.pose = pose; p.flip = flip;
+  const t = p.sprite.material.map, n = 4, i = POSE[pose];
+  t.repeat.x = flip ? -1 / n : 1 / n;
+  t.offset.x = flip ? (i + 1) / n : i / n;
+}
+
+// Chỗ đứng: trước cửa nhà mình, hoặc cạnh cửa nhà đang tới bàn giao
+let guestIndex = 0;
+const guestSpot = {};
+const SLOT = { 'coder-1': -1, 'coder-2': 0, 'coder-3': 1 };
+function spotFor(a) {
+  if (a.isGuest && a.at === a.home) {
+    if (guestSpot[a.id] === undefined) guestSpot[a.id] = guestIndex++;
+    const ang = guestSpot[a.id] * 1.1 + 0.4;
+    return { x: PLAZA.x + Math.cos(ang) * PLAZA.rx * 0.6, y: PLAZA.y + Math.sin(ang) * PLAZA.ry * 0.6, house: null };
+  }
+  const hid = houseOf(a.at || a.home);
+  const h = houses[hid] || houses[houseOf(a.home)];
+  if (!h) return { x: PLAZA.x, y: PLAZA.y, house: null };
+  let x = h.door.x, y = h.door.y;
+  if (a.at === a.home) x += (SLOT[a.id] || 0) * 80;
+  else x += 70 + (Object.values(people).filter(q => q.data.at === a.at && q.data.at !== q.data.home && q.data.id < a.id).length) * 46; // khách đứng lệch sang bên
+  return { x, y, house: hid };
+}
+
+// Ra điểm quảng trường gần nhà, đi qua quảng trường, rồi vào cửa nhà kia
+function plazaEdge(pt) {
+  const dx = pt.x - PLAZA.x, dy = (pt.y - PLAZA.y) * (PLAZA.rx / PLAZA.ry);
+  const l = Math.hypot(dx, dy) || 1;
+  return { x: PLAZA.x + dx / l * PLAZA.rx, y: PLAZA.y + dy / l * PLAZA.ry };
+}
+function goTo(p, a) {
+  const s = spotFor(a);
+  if (!p.pos) { p.pos = { x: s.x, y: s.y }; p.goal = s; return; }
+  if (p.goal && Math.abs(p.goal.x - s.x) < 1 && Math.abs(p.goal.y - s.y) < 1) return;
+  const sameHouse = p.goal && p.goal.house && p.goal.house === s.house;
+  p.goal = s;
+  if (sameHouse || Math.hypot(s.x - p.pos.x, s.y - p.pos.y) < 120) { p.route = [s]; return; }
+  p.route = [plazaEdge(p.pos), plazaEdge(s), s];
+}
 
 // ---------- Cập nhật theo dữ liệu ----------
 let state = null;
@@ -236,13 +302,11 @@ function apply(s) {
   for (const a of s.agents) {
     const p = people[a.id] || buildPerson(a);
     p.data = a;
-    const t = spotFor(a);
-    if (!p.placed) { p.group.position.copy(t); p.placed = true; }
-    p.target.copy(t);
+    goTo(p, a);
     if (p.bubbleDiv.textContent !== a.bubble) p.bubbleDiv.textContent = a.bubble || '';
     p.bubbleDiv.className = 'bubble3d ' + a.state;
     // Ở nhà thì biển tên trên mái đã đủ, chỉ hiện tên khi đi sang phòng khác
-    p.nameTag.element.style.visibility = (a.isBoss || a.isGuest || a.at !== a.home) ? '' : 'hidden';
+    p.nameTag.element.style.visibility = (a.isBoss || a.isGuest || a.at !== a.home || houseOf(a.id) !== a.id) ? '' : 'hidden';
     p.bubbleDiv.style.display = a.bubble ? '' : 'none';
   }
   renderOverview(s);
@@ -328,11 +392,13 @@ document.addEventListener('click', e => {
   const d = e.target.closest('[data-decide]');
   if (d) post('/api/decide', { id: d.dataset.decide, approve: d.dataset.ok === '1' });
 });
+
+let drift = false;
 const toggles = {
-  rotate: b => { controls.autoRotate = !controls.autoRotate; b.classList.toggle('on', controls.autoRotate); b.textContent = controls.autoRotate ? 'Dừng xoay' : 'Xoay'; },
+  rotate: b => { drift = !drift; b.classList.toggle('on', drift); b.textContent = drift ? 'Dừng lướt' : 'Lướt'; },
   names: b => { b.classList.toggle('on', !document.body.classList.toggle('hide-names')); },
   bubbles: b => { b.classList.toggle('on', !document.body.classList.toggle('hide-bubbles')); },
-  home: () => { camera.position.copy(HOME_POS); camera.zoom = 1; camera.updateProjectionMatrix(); controls.target.set(0, 0, 0); },
+  home: () => { camera.position.set(0, 0, 200); camera.zoom = 1; camera.updateProjectionMatrix(); controls.target.set(0, 0, 0); },
   overview: b => b.classList.toggle('on', !$('#overview').classList.toggle('hidden')),
   log: b => b.classList.toggle('on', !$('#log').classList.toggle('hidden')),
   demo: () => post('/api/demo', { on: !state?.settings.demo }),
@@ -347,17 +413,29 @@ if (innerWidth < 760) {
   for (const k of ['overview', 'log']) { $('#' + k).classList.add('hidden'); document.querySelector(`[data-act=${k}]`).classList.remove('on'); }
 }
 
-// Bấm vào nhân vật hoặc ngôi nhà để xem chi tiết
+// Bấm vào nhân vật hoặc ngôi nhà để xem chi tiết (chỉ tính phần có hình, bỏ nền trong suốt)
 const ray = new THREE.Raycaster();
 const ptr = new THREE.Vector2();
+function pick(e) {
+  ptr.set((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
+  ray.setFromCamera(ptr, camera);
+  const hits = ray.intersectObjects(clickable, false).filter(hitOpaque);
+  // trên cùng là cái vẽ sau cùng (gần camera hơn)
+  hits.sort((a, b) => b.object.renderOrder - a.object.renderOrder);
+  return hits[0];
+}
 let downAt = null;
 renderer.domElement.addEventListener('pointerdown', e => { downAt = [e.clientX, e.clientY]; });
 renderer.domElement.addEventListener('pointerup', e => {
   if (!downAt || Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]) > 6) return;
-  ptr.set((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
-  ray.setFromCamera(ptr, camera);
-  const hit = ray.intersectObjects(clickable, false)[0];
+  const hit = pick(e);
   if (hit) openDetail(hit.object.userData.agentId);
+});
+let hoverAt = 0;
+renderer.domElement.addEventListener('pointermove', e => {
+  if (e.buttons || e.timeStamp - hoverAt < 80) return;
+  hoverAt = e.timeStamp;
+  renderer.domElement.style.cursor = pick(e) ? 'pointer' : 'grab';
 });
 
 // ---------- Nối với server ----------
@@ -367,39 +445,71 @@ function connect() {
   es.onmessage = e => apply(JSON.parse(e.data));
   es.onerror = () => { $('#conn').classList.add('off'); $('#subtitle').textContent = 'Mất kết nối server, đang thử lại…'; };
 }
-connect();
-window.__town = { openDetail };
+window.__town = { openDetail, people, houses };
 
 // ---------- Vòng vẽ ----------
 const clock = new THREE.Clock();
-const tmp = new THREE.Vector3();
-function tick() {
+const SPEED = 150; // pixel bản đồ mỗi giây
+function stepPerson(p, dt, t) {
+  if (!p.pos) return;
+  const st = p.data.state;
+  let moving = false;
+  while (p.route.length) {
+    const w = p.route[0];
+    const dx = w.x - p.pos.x, dy = w.y - p.pos.y, d = Math.hypot(dx, dy);
+    if (d < 1) { p.pos.x = w.x; p.pos.y = w.y; p.route.shift(); continue; }
+    const s = Math.min(d, SPEED * dt);
+    p.pos.x += dx / d * s; p.pos.y += dy / d * s;
+    p.dir.x = dx / d; p.dir.y = dy / d;
+    moving = true;
+    break;
+  }
+  p.walking = moving;
+  const b = p.body;
+  if (moving) {
+    // 2 khung bước luân phiên; đi lên thì quay lưng, đi xuống thì nhìn thẳng
+    const step = Math.floor((t + p.phase) * 6) % 2;
+    const ax = Math.abs(p.dir.x), ay = Math.abs(p.dir.y) * 1.6;
+    if (ay > ax) setPose(p, p.dir.y < 0 ? 'back' : 'front', step === 1);
+    else if (p.dir.x > 0) setPose(p, step ? 'walk' : 'left', !step);
+    else setPose(p, step ? 'walk' : 'left', !!step);
+    b.position.y = Math.abs(Math.sin((t + p.phase) * 12)) * 5;
+    b.scale.set(1, 1, 1);
+  } else {
+    setPose(p, 'front', false);
+    b.position.y = st === 'working' ? Math.abs(Math.sin(t * 7 + p.phase)) * 3
+      : st === 'waiting' ? Math.abs(Math.sin(t * 3.2)) * 10 : 0;
+    const breathe = 1 + Math.sin(t * 2 + p.phase) * 0.012;
+    b.scale.set(1 / breathe, breathe, 1);
+  }
+  p.group.position.set(wx(p.pos.x), wy(p.pos.y), depth(p.pos.y) + 0.01);
+  const ro = Math.round(p.pos.y * 10) + 1;
+  if (p.sprite) p.sprite.renderOrder = ro;
+  p.shadow.renderOrder = ro - 1;
+}
+
+let last = 0;
+function tick(now) {
+  requestAnimationFrame(tick);
+  // Tab ẩn thì trình duyệt tự dừng; ở đây giới hạn ~60 khung/giây cho màn hình 120Hz
+  if (now - last < 15) return;
+  last = now;
   const dt = Math.min(clock.getDelta(), 0.05);
   const t = clock.elapsedTime;
-  for (const p of Object.values(people)) {
-    const pos = p.group.position;
-    tmp.subVectors(p.target, pos); tmp.y = 0;
-    const dist = tmp.length();
-    p.walking = dist > 0.05;
-    if (p.walking) {
-      const step = Math.min(dist, 3.2 * dt);
-      tmp.normalize();
-      pos.addScaledVector(tmp, step);
-      p.group.rotation.y = Math.atan2(tmp.x, tmp.z);
-      p.inner.position.y = Math.abs(Math.sin(t * 10 + p.phase)) * 0.25;
-      p.inner.rotation.z = Math.sin(t * 10 + p.phase) * 0.08;
-    } else {
-      // Đứng yên thì quay mặt vào quảng trường
-      const st = p.data.state;
-      p.inner.rotation.z = 0;
-      p.inner.position.y = st === 'working' ? Math.abs(Math.sin(t * 6 + p.phase)) * 0.12
-        : st === 'waiting' ? Math.abs(Math.sin(t * 3)) * 0.3 : 0;
-      if (!p.data.isBoss && pos.lengthSq() > 1) p.group.rotation.y = Math.atan2(-pos.x, -pos.z);
-    }
+  for (const p of Object.values(people)) stepPerson(p, dt, t);
+  if (drift) {
+    const ox = Math.sin(t * 0.08) * 0.35 * dt * 60, oy = Math.cos(t * 0.11) * 0.15 * dt * 60;
+    camera.position.x += ox; controls.target.x += ox;
+    camera.position.y += oy; controls.target.y += oy;
   }
   controls.update();
+  clampView();
   renderer.render(scene, camera);
   labels.render(scene, camera);
-  requestAnimationFrame(tick);
 }
-tick();
+
+// Nạp danh sách sprite trước rồi mới nối server
+buildMap();
+fetch(SPR + 'sprites.json').then(r => r.json()).then(m => { meta = m; connect(); })
+  .catch(() => { $('#subtitle').textContent = 'Không tải được ảnh sprite (web/assets/sprites)'; });
+requestAnimationFrame(tick);

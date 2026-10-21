@@ -1,0 +1,145 @@
+{
+ "map": {
+  "file": "map.webp",
+  "w": 1920,
+  "h": 1080
+ },
+ "buildings": {
+  "tiep-nhan": {
+   "file": "nha/tiep-nhan.webp",
+   "w": 640,
+   "h": 475
+  },
+  "san-pham": {
+   "file": "nha/san-pham.webp",
+   "w": 640,
+   "h": 507
+  },
+  "thiet-ke": {
+   "file": "nha/thiet-ke.webp",
+   "w": 640,
+   "h": 506
+  },
+  "calm": {
+   "file": "nha/calm.webp",
+   "w": 640,
+   "h": 565
+  },
+  "anicca": {
+   "file": "nha/anicca.webp",
+   "w": 640,
+   "h": 499
+  },
+  "coder": {
+   "file": "nha/coder.webp",
+   "w": 640,
+   "h": 430
+  },
+  "qa": {
+   "file": "nha/qa.webp",
+   "w": 475,
+   "h": 640
+  }
+ },
+ "chars": {
+  "calm": {
+   "file": "nv/calm.webp",
+   "cellW": 176,
+   "cellH": 256,
+   "poses": [
+    "front",
+    "back",
+    "left",
+    "walk"
+   ]
+  },
+  "anicca": {
+   "file": "nv/anicca.webp",
+   "cellW": 176,
+   "cellH": 256,
+   "poses": [
+    "front",
+    "back",
+    "left",
+    "walk"
+   ]
+  },
+  "coder": {
+   "file": "nv/coder.webp",
+   "cellW": 176,
+   "cellH": 256,
+   "poses": [
+    "front",
+    "back",
+    "left",
+    "walk"
+   ]
+  },
+  "coder-b": {
+   "file": "nv/coder-b.webp",
+   "cellW": 176,
+   "cellH": 256,
+   "poses": [
+    "front",
+    "back",
+    "left",
+    "walk"
+   ]
+  },
+  "thiet-ke": {
+   "file": "nv/thiet-ke.webp",
+   "cellW": 176,
+   "cellH": 256,
+   "poses": [
+    "front",
+    "back",
+    "left",
+    "walk"
+   ]
+  },
+  "san-pham": {
+   "file": "nv/san-pham.webp",
+   "cellW": 176,
+   "cellH": 256,
+   "poses": [
+    "front",
+    "back",
+    "left",
+    "walk"
+   ]
+  },
+  "tiep-nhan": {
+   "file": "nv/tiep-nhan.webp",
+   "cellW": 176,
+   "cellH": 256,
+   "poses": [
+    "front",
+    "back",
+    "left",
+    "walk"
+   ]
+  },
+  "qa": {
+   "file": "nv/qa.webp",
+   "cellW": 176,
+   "cellH": 256,
+   "poses": [
+    "front",
+    "back",
+    "left",
+    "walk"
+   ]
+  },
+  "khach": {
+   "file": "nv/khach.webp",
+   "cellW": 176,
+   "cellH": 256,
+   "poses": [
+    "front",
+    "back",
+    "left",
+    "walk"
+   ]
+  }
+ }
+}
