@@ -45,3 +45,10 @@ hyan chốt: làm **web game** three.js (không làm client riêng), đội AI �
 
 - Không tự đăng, gửi gì ra ngoài; việc không hoàn tác được phải hỏi hyan.
 - Giữ server không phụ thuộc gói ngoài để hyan chỉ cần Node là chạy được.
+
+## Bản 0.3 (21/10/2026): đồ họa anime 2.5D
+
+- `web/app.js` vẽ kiểu 2.5D: bản đồ `town_map_empty_7_plots` là ảnh nền phẳng, nhà và nhân vật là sprite nền trong suốt, sắp thứ tự vẽ theo y. Camera trực giao cố định góc (tranh vẽ sẵn góc nhìn nên không xoay), kéo để di chuyển, cuộn / chụm hai ngón để phóng to. Nút "Lướt" cho camera trôi chậm.
+- Toạ độ ô đất, quảng trường trong `PLOTS` / `PLAZA` ở đầu `web/app.js` (pixel ảnh 1920×1080). 3 Coder ở chung "Xưởng Code".
+- Nhân vật: bảng 4 dáng (thẳng, lưng, nghiêng trái, bước phải) cắt thành sprite sheet; đi bộ bằng 2 khung luân phiên + lật ngang, đi vòng qua quảng trường.
+- Sprite tạo lại bằng `python3 tools/lam_sprite.py` (Pillow + numpy): xoá nền trắng bằng loang màu từ mép, ra `web/assets/sprites/`.
