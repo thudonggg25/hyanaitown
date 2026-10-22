@@ -759,3 +759,18 @@ body:has(#log:not(.hidden)) #chat, body:has(#report:not(.hidden)) #chat { displa
   #leftbar { top: 110px; }
   #toasts { top: 110px; }
 }
+
+/* ---------- Kéo – thả, đổi cỡ bảng (layout.js) ---------- */
+.lay-handle { cursor: move; touch-action: none; user-select: none; }
+.lay-grip { position: absolute; top: -2px; left: 50%; transform: translate(-50%, -100%); z-index: 3; padding: 0 8px; height: 14px; line-height: 14px; font-size: 12px; color: #fff3d6; background: #3a2a18; border: 1.5px solid #9a6a38; border-bottom: 0; border-radius: 8px 8px 0 0; opacity: .55; }
+.lay:hover > .lay-grip, .lay-grip:hover { opacity: 1; }
+#topleft > .lay-grip, #topbar > .lay-grip { top: auto; bottom: -2px; transform: translate(-50%, 100%); border: 1.5px solid #9a6a38; border-top: 0; border-radius: 0 0 8px 8px; }
+#detail > .lay-grip { top: 0; transform: translate(-50%, 0); border-radius: 0 0 8px 8px; border-top: 0; border-bottom: 1.5px solid #9a6a38; }
+.lay-rz { position: absolute; right: 0; bottom: 0; width: 18px; height: 18px; cursor: nwse-resize; touch-action: none; z-index: 3;
+  background: linear-gradient(135deg, transparent 50%, rgba(255, 230, 180, .55) 50%, rgba(255, 230, 180, .55) 60%, transparent 60%, transparent 72%, rgba(255, 230, 180, .55) 72%, rgba(255, 230, 180, .55) 82%, transparent 82%); }
+.lay.lay-moved { right: auto !important; bottom: auto !important; transform: none !important; margin: 0 !important; animation: none !important; }
+.lay.lay-sized { max-height: none !important; max-width: none !important; min-height: 0; box-sizing: border-box; }
+.panel.lay-sized, .panel.lay-moved { overflow-y: auto; }
+#chat.lay-sized.closed { height: auto !important; }
+body.lay-dragging, body.lay-dragging * { user-select: none !important; }
+@media (max-width: 699px) { .lay-grip, .lay-rz { display: none; } .lay-handle { cursor: auto; } }
