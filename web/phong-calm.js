@@ -8,7 +8,7 @@ const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '
 const hhmm = ts => new Date(ts).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
 const dayOf = ts => new Date(ts).toLocaleDateString('vi-VN', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' });
 const post = (url, body) => fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) }).then(r => r.json()).catch(() => ({}));
-const statusText = { running: 'Đang chạy', queued: 'Sắp làm', waiting_approval: 'Chờ duyệt', approved: 'Đã duyệt', rejected: 'Bị trả lại', done: 'Xong', error: 'Lỗi' };
+const statusText = { running: 'Đang chạy', queued: 'Sắp làm', waiting_approval: 'Chờ duyệt', approved: 'Đã duyệt', rejected: 'Bị trả lại', done: 'Xong', error: 'Lỗi', answered: 'Đã trả lời' };
 
 let ctx = null;           // { getState, nameOf, toast, onUnread }
 let msgs = [];            // hội thoại đã tải
@@ -189,6 +189,13 @@ export async function openTask(id) {
     <h3 class="task-title">${esc(t.title)}</h3>
     <div class="meta">Người làm: <b>${esc(ctx.nameOf(t.agent))}</b> · Tạo lúc ${hhmm(t.createdAt)} ${new Date(t.createdAt).toLocaleDateString('vi-VN')} · Cập nhật ${hhmm(t.updatedAt)}</div>
     ${waiting ? `<div class="approve-row"><button class="ok" data-task-decide="${esc(t.id)}" data-ok="1">Duyệt</button><button class="no" data-task-decide="${esc(t.id)}" data-ok="0">Từ chối</button></div>` : ''}
+    ${t.question ? `<section class="calm-q"><h4>Calm hỏi bạn</h4><div class="md">${md(t.question)}</div></section>` : ''}
+    ${t.answers?.length ? `<section><h4>Bạn đã trả lời</h4><ul class="tl">${t.answers.map(a => `<li><time>${hhmm(a.ts)}</time>${esc(a.text)}</li>`).join('')}</ul></section>` : ''}
+    <section class="answer-box"><h4>Trả lời Calm</h4>
+      <textarea id="answer-text" rows="3" placeholder="Viết câu trả lời cho Calm về ${esc(t.id)}…"></textarea>
+      <label class="hint"><input type="checkbox" id="answer-now"> Gửi Calm xử lý ngay (không chờ lượt chạy theo lịch)</label>
+      <div class="approve-row"><button class="ok" data-answer="${esc(t.id)}">Gửi trả lời</button></div>
+    </section>
     ${t.note ? `<section><h4>Ghi chú</h4><div class="md">${md(t.note)}</div></section>` : ''}
     ${t.brief ? `<section><h4>Calm giao việc</h4><div class="md">${md(t.brief)}</div></section>` : ''}
     ${t.steps?.length ? `<section><h4>Các bước đã làm (${t.steps.length})</h4><ol class="steps">${t.steps.map(s => `<li><time>${hhmm(s.ts)}</time>${esc(s.text)}</li>`).join('')}</ol></section>` : ''}
@@ -249,6 +256,17 @@ export function initCalmRoom(c) {
     if (b && !b.disabled) send(b.dataset.choose);
     const tk = e.target.closest('[data-task]');
     if (tk) openTask(tk.dataset.task);
+    const an = e.target.closest('[data-answer]');
+    if (an) {
+      const text = $('#answer-text').value.trim();
+      if (!text) return;
+      an.disabled = true;
+      post('/api/answer', { id: an.dataset.answer, text, now: $('#answer-now').checked }).then(r => {
+        if (!r.ok) { an.disabled = false; return alert(r.error || 'Không gửi được'); }
+        ctx.toast('approval', 'Calm', r.saved ? 'Đã lưu câu trả lời, Calm sẽ đọc ở lượt sau' + (r.sent ? ' (đang xử lý ngay)' : '') : 'Đã lưu trên bảng, nhưng chưa có thư mục Calm để ghi file');
+        openTask(an.dataset.answer);
+      });
+    }
     const d = e.target.closest('[data-task-decide]');
     if (d) post('/api/decide', { id: d.dataset.taskDecide, approve: d.dataset.ok === '1' }).then(() => openTask(d.dataset.taskDecide));
   });

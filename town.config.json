@@ -3,6 +3,7 @@
   "subtitle": "Đội vận hành Helper",
   "port": 4545,
   "taskPrefix": "HLP",
+  "linearPrefixes": ["HP"],
   "approvalHoldSeconds": 60,
   "calm": {
     "dir": "C:/Users/hyang/Calm"

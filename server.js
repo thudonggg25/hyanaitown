@@ -37,7 +37,21 @@ for (const a of config.agents) agents[a.id] = makeAgent(a);
 const boardFile = path.join(DATA, 'board.json');
 let board = [];
 try { board = JSON.parse(fs.readFileSync(boardFile, 'utf8')); } catch {}
-let taskSeq = board.reduce((m, t) => Math.max(m, Number(String(t.id).split('-').pop()) || 0), 0);
+// Mã việc: ưu tiên mã của Calm (HLP-010) hoặc mã Linear (HP-152) có trong tiêu đề / lời giao việc,
+// để bảng thị trấn khớp sổ BOARD.md của Calm. Không có mã thì tự đánh số riêng TT-001 (không trùng dải mã của Calm).
+const CALM_PREFIX = config.taskPrefix || 'HY';
+const AUTO_PREFIX = config.boardPrefix || 'TT';
+const autoRe = new RegExp(`^${AUTO_PREFIX}-(\\d+)$`);
+let taskSeq = board.reduce((m, t) => { const x = String(t.id).match(autoRe); return x ? Math.max(m, Number(x[1])) : m; }, 0);
+function findCode(...texts) {
+  const s = texts.filter(Boolean).join('\n');
+  const own = s.match(new RegExp(`\\b${CALM_PREFIX}-\\d+\\b`));
+  if (own) return own[0];
+  const lp = (config.linearPrefixes || []).join('|');
+  const lin = s.match(lp ? new RegExp(`\\b(?:${lp})-\\d+\\b`) : /\b[A-Z][A-Z0-9]{1,5}-\d+\b/);
+  if (lin && lin[0].startsWith(AUTO_PREFIX + '-')) return null;
+  return lin ? lin[0] : null;
+}
 
 const approvals = [];       // yêu cầu xin quyền đang chờ (PermissionRequest)
 const log = [];
@@ -61,10 +75,12 @@ function writeStatus() {
   fs.writeFile(path.join(DATA, 'status.json'), JSON.stringify(snapshot(), null, 2), () => {});
 }
 
-function newTask(title, agentId, status = 'queued') {
-  taskSeq += 1;
+function newTask(title, agentId, status = 'queued', hint = '') {
+  let id = findCode(title, hint);
+  if (id && board.some(x => x.id === id)) { let n = 2; while (board.some(x => x.id === `${id}-${n}`)) n++; id = `${id}-${n}`; }
+  if (!id) { taskSeq += 1; id = `${AUTO_PREFIX}-${String(taskSeq).padStart(3, '0')}`; }
   const t = {
-    id: `${config.taskPrefix || 'HY'}-${String(taskSeq).padStart(3, '0')}`,
+    id,
     title, agent: agentId, status, note: '', createdAt: now(), updatedAt: now(),
   };
   board.push(t);
@@ -199,7 +215,7 @@ function handleHook(ev) {
         // Sếp giao việc cho một phòng
         const target = ensureAgent(input.subagent_type || 'general-purpose');
         const title = input.description || String(input.prompt || '').slice(0, 60) || 'Việc mới';
-        const t = newTask(title, target, 'running');
+        const t = newTask(title, target, 'running', input.prompt);
         t.brief = clip(input.prompt, 12000);
         runningByAgent[target] = t;
         setAgent(target, { task: t.id });
@@ -411,16 +427,51 @@ const api = {
   },
   // Agent tạo việc cần duyệt (qua .claude/town/board.js)
   'POST /api/board': async (req, res) => {
-    const { title, agent, status, note } = await readBody(req);
+    const { title, agent, status, note, question, ref } = await readBody(req);
     const id = ensureAgent(agent || config.boss.id);
-    const t = newTask(title || 'Việc mới', id, status || 'waiting_approval');
+    // Calm hỏi Hyan: gắn câu hỏi vào việc có sẵn (ref) hoặc tạo mục mới chờ trả lời
+    const old = ref && board.find(x => x.id === ref);
+    if (question && old) {
+      old.question = question; setTask(old, 'waiting_approval');
+      setAgent(id, { state: 'waiting', bubble: `Hỏi bạn về ${old.id}` });
+      addLog(id, `Hỏi bạn về ${old.id}: ${question}`, 'approval');
+      push(); return sendJson(res, 200, old);
+    }
+    const t = newTask(title || question || 'Việc mới', id, status || 'waiting_approval', [ref, note].join(' '));
     if (note) t.note = note;
+    if (question) t.question = question;
     if (t.status === 'waiting_approval') {
       setAgent(id, { state: 'waiting', bubble: `Chờ bạn duyệt ${t.id}` });
       addLog(id, `Gửi ${t.id} "${t.title}" chờ bạn duyệt`, 'approval');
     } else addLog(id, `Thêm việc ${t.id}: ${t.title}`);
     push();
     sendJson(res, 200, t);
+  },
+  // Hyan trả lời câu hỏi của Calm ngay trong chi tiết việc
+  'POST /api/answer': async (req, res) => {
+    const { id, text, now: resume } = await readBody(req);
+    const t = board.find(x => x.id === id);
+    const ans = String(text || '').trim();
+    if (!t || !ans) return sendJson(res, 400, { ok: false, error: 'Thiếu việc hoặc câu trả lời' });
+    (t.answers ||= []).push({ ts: now(), text: ans });
+    if (t.status === 'waiting_approval' && t.question) setTask(t, 'answered'); else saveBoard();
+    addLog(t.agent, `Bạn trả lời Calm về ${t.id}: ${clip(ans, 120)}`, 'approval');
+    // Ghi vào thư mục của Calm để lượt chạy sau đọc được
+    let saved = false;
+    const cdir = calm.status().dir;
+    if (cdir && fs.existsSync(cdir)) {
+      try {
+        fs.mkdirSync(path.join(cdir, 'lich'), { recursive: true });
+        const block = `\n## ${now()} · ${t.id} · CHƯA XỬ LÝ\n**Việc:** ${t.title}\n` +
+          (t.question ? `**Calm hỏi:** ${t.question}\n` : '') + `**Hyan trả lời:** ${ans}\n`;
+        fs.appendFileSync(path.join(cdir, 'lich', 'tra-loi-cua-hyan.md'), block);
+        saved = true;
+      } catch (e) { console.error(e); }
+    }
+    let sent = false;
+    if (resume) sent = !!calm.send(`Hyan trả lời câu hỏi về ${t.id} ("${t.title}")${t.question ? `\nCâu hỏi: ${t.question}` : ''}\nTrả lời: ${ans}\n(Đã ghi vào lich/tra-loi-cua-hyan.md; xử lý xong thì đổi dòng đó thành ĐÃ XỬ LÝ.)`).ok;
+    push();
+    sendJson(res, 200, { ok: true, saved, sent, task: t });
   },
   'POST /api/log': async (req, res) => {
     const { agent, text, bubble } = await readBody(req);

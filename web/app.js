@@ -525,7 +525,7 @@ function showErr(who, text) {
 
 const nameOf = id => state?.agents.find(a => a.id === id)?.name || id;
 const colorOf = id => state?.agents.find(a => a.id === id)?.color || '#c9b79c';
-const statusText = { running: 'Đang chạy', queued: 'Sắp làm', waiting_approval: 'Chờ duyệt', approved: 'Đã duyệt', rejected: 'Bị trả lại', done: 'Xong', error: 'Lỗi' };
+const statusText = { running: 'Đang chạy', queued: 'Sắp làm', waiting_approval: 'Chờ duyệt', approved: 'Đã duyệt', rejected: 'Bị trả lại', done: 'Xong', error: 'Lỗi', answered: 'Đã trả lời' };
 const hhmm = ts => new Date(ts).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
 
 function renderOverview(s) {
