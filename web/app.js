@@ -261,6 +261,11 @@ async function buildHouse(houseId, roomIds, names) {
   mesh.userData.mask = alphaMask(tex);
   sign.position.set(0, hh * 1.02, 0);
   mesh.add(sign);
+  // Bảng trạng thái nhỏ trên biển nhà: đang làm / chờ duyệt / lỗi / lâu không động
+  h.status = label('', 'hstat');
+  h.status.position.set(0, hh * 1.02, 0);
+  mesh.add(h.status);
+  if (state) updateHouses(state);
   scene.add(mesh);
   clickable.push(mesh);
   h.mesh = mesh;
@@ -449,15 +454,131 @@ function apply(s) {
     p.bubbleDiv.style.display = a.bubble ? '' : 'none';
   }
   announce(s);
+  updateHouses(s);
   renderOverview(s);
   renderLog(s.log);
   if (selected) renderDetail(selected);
   $('#btn-demo').classList.toggle('on', !!s.settings.demo);
-  $('#btn-demo span').textContent = s.settings.demo ? 'Dừng tự chạy' : 'Tự chạy';
+  $('#btn-demo span').textContent = s.settings.demo ? 'Dừng chạy' : 'Tự chạy';
   $('#btn-demo img').src = UI + (s.settings.demo ? 'icon-no.webp' : 'icon-play.webp');
   const pending = s.approvals.length + s.board.filter(t => t.status === 'waiting_approval').length;
   $('#btn-approve1').disabled = pending === 0;
+  // Số việc chờ duyệt: huy hiệu cam trên Duyệt nhanh + tiêu đề tab
+  const ab = $('#approve-badge');
+  ab.textContent = pending > 99 ? '99+' : pending; ab.classList.toggle('hidden', !pending);
+  $('#btn-approve1').classList.toggle('pulse', pending > 0);
+  $('#btn-approve1').title = pending ? `Duyệt việc đầu tiên đang chờ (còn ${pending} việc chờ duyệt) · phím A` : 'Không có việc chờ duyệt';
+  document.title = (pending ? `(${pending} chờ duyệt) ` : '') + (s.title || 'Thị trấn AI agent');
 }
+
+// ---------- Trạng thái từng nhà (như game quản lý: nhìn mái nhà là biết nhà nào bận, kẹt, lỗi) ----------
+const STUCK_MS = 10 * 60 * 1000;
+const ago = ts => { const m = Math.round((Date.now() - new Date(ts)) / 60000); return m < 1 ? 'vừa xong' : m < 60 ? `${m} phút` : `${Math.floor(m / 60)} giờ ${m % 60} phút`; };
+function houseInfo(s, hid) {
+  const rooms = s.rooms.filter(r => houseOf(r) === hid);
+  const ags = s.agents.filter(a => rooms.includes(a.id));
+  const tasks = s.board.filter(t => rooms.includes(t.agent));
+  const asks = s.approvals.filter(q => rooms.includes(q.agent)).length + tasks.filter(t => t.status === 'waiting_approval').length;
+  return {
+    rooms, ags, tasks, asks,
+    working: ags.filter(a => a.state === 'working').length,
+    queued: tasks.filter(t => t.status === 'queued').length,
+    errors: ags.filter(a => a.state === 'error').length,
+    stuck: ags.filter(a => a.state === 'working' && Date.now() - new Date(a.updatedAt) > STUCK_MS).length,
+  };
+}
+function updateHouses(s) {
+  for (const [hid, h] of Object.entries(houses)) {
+    if (!h.status) continue;
+    const i = houseInfo(s, hid), el = h.status.element, chips = [];
+    if (i.asks) chips.push(`<i class="w">✋ ${i.asks} chờ duyệt</i>`);
+    if (i.errors) chips.push(`<i class="e">⚠ Lỗi</i>`);
+    if (i.stuck) chips.push(`<i class="s">⏳ Lâu không động</i>`);
+    if (i.working) chips.push(`<i class="r">▶ ${i.working > 1 ? i.working + ' ' : ''}đang làm</i>`);
+    if (i.queued) chips.push(`<i class="q">${i.queued} chờ làm</i>`);
+    const html = chips.length ? `<div class="hs-in">${chips.join('')}</div>` : '';
+    if (el.innerHTML !== html) el.innerHTML = html;
+  }
+}
+
+// ---------- Camera bay tới nhà (không xoay, chỉ trượt và phóng) ----------
+let focusGoal = null;
+function focusHouse(hid) {
+  const pl = PLOTS[hid]; if (!pl) return;
+  const zoom = Math.max(camera.zoom, innerWidth < 900 ? 1.3 : 1.5);
+  // đẩy nhà lên trên một chút để bảng chi tiết ở dưới không che
+  focusGoal = { x: wx(pl.x), y: wy(pl.y) - (innerWidth < 900 ? 140 : 90) / zoom, zoom };
+}
+function stepFocus() {
+  if (!focusGoal) return;
+  const t = controls.target, k = 0.12;
+  const dx = (focusGoal.x - t.x) * k, dy = (focusGoal.y - t.y) * k;
+  t.x += dx; t.y += dy; camera.position.x += dx; camera.position.y += dy;
+  camera.zoom += (focusGoal.zoom - camera.zoom) * k; camera.updateProjectionMatrix();
+  if (Math.abs(dx) + Math.abs(dy) < 0.3 && Math.abs(focusGoal.zoom - camera.zoom) < 0.01) focusGoal = null;
+}
+const HOTKEY_HOUSES = ['tiep-nhan', 'san-pham', 'thiet-ke', 'calm', 'anicca', 'coder', 'qa'];
+function openHouse(hid) {
+  const rooms = state?.rooms.filter(r => houseOf(r) === hid) || [];
+  if (!rooms.length) return;
+  focusHouse(hid);
+  openDetail(rooms[0]);
+}
+const focusTask = tid => { const t = state?.board.find(x => x.id === tid); if (t) focusHouse(houseOf(t.agent)); };
+
+// ---------- Số liệu hôm nay (server tính từ bảng việc + nhật ký thật) ----------
+let stats = null, statsAt = 0;
+async function loadStats(force) {
+  if (!force && Date.now() - statsAt < 15000) return stats;
+  try { stats = await (await fetch('/api/stats')).json(); statsAt = Date.now(); } catch {}
+  return stats;
+}
+const dur = ms => { const m = Math.round(ms / 60000); return m < 1 ? '< 1 phút' : m < 60 ? `${m} phút` : `${Math.floor(m / 60)}g ${m % 60}p`; };
+function houseToday(hid) {
+  const out = { done: 0, created: 0, errors: 0, durSum: 0, durN: 0, last: null };
+  if (!stats || !state) return out;
+  for (const r of state.rooms.filter(r => houseOf(r) === hid)) {
+    const x = stats.agents[r]; if (!x) continue;
+    for (const k of ['done', 'created', 'errors', 'durSum', 'durN']) out[k] += x[k];
+    if (x.last && (!out.last || x.last > out.last)) out.last = x.last;
+  }
+  return out;
+}
+async function renderReport(force) {
+  if ($('#report').classList.contains('hidden') || !state) return;
+  await loadStats(force);
+  if (!stats) { $('#report-body').innerHTML = '<div class="empty">Không lấy được số liệu.</div>'; return; }
+  const hids = HOTKEY_HOUSES.filter(h => houses[h] || state.rooms.some(r => houseOf(r) === h));
+  let tot = { done: 0, created: 0, errors: 0 };
+  const rows = hids.map(hid => {
+    const d = houseToday(hid), i = houseInfo(state, hid);
+    tot.done += d.done; tot.created += d.created; tot.errors += d.errors;
+    const name = hid === 'coder' ? 'Xưởng Code' : nameOf(i.rooms[0]);
+    const st = i.errors ? ['e', 'Lỗi'] : i.asks ? ['w', 'Chờ duyệt'] : i.stuck ? ['s', 'Lâu không động'] : i.working ? ['r', 'Đang làm'] : ['i', 'Rảnh'];
+    return { hid, name, d, i, st };
+  });
+  const best = rows.reduce((a, b) => (b.d.done > (a?.d.done || 0) ? b : a), null);
+  const max = Math.max(1, ...stats.hours), nowH = new Date().getHours();
+  $('#report-body').innerHTML = `
+    <div class="rp-tiles">
+      <div><b>${tot.done}</b><span>Việc xong</span></div>
+      <div><b>${tot.created}</b><span>Việc mới</span></div>
+      <div><b>${stats.approvalsDone}/${stats.approvalsAsked}</b><span>Đã duyệt / được hỏi</span></div>
+      <div class="${tot.errors ? 'bad' : ''}"><b>${tot.errors}</b><span>Lỗi, bị trả lại</span></div>
+    </div>
+    ${best ? `<p class="rp-best">🏆 Nhà làm nhiều nhất hôm nay: <b>${esc(best.name)}</b> (${best.d.done} việc)</p>` : '<p class="rp-best">Hôm nay chưa nhà nào xong việc.</p>'}
+    <h3>Từng nhà</h3>
+    <table class="rp-table"><thead><tr><th>Nhà</th><th>Bây giờ</th><th title="Xong hôm nay">Xong</th><th title="Đang chờ: chờ làm + chờ duyệt">Chờ</th><th title="Thời gian làm trung bình mỗi việc">TB/việc</th></tr></thead><tbody>
+    ${rows.map(r => `<tr data-house="${r.hid}"><td><b>${esc(r.name)}</b><small>${r.d.last ? 'động ' + ago(r.d.last) + (ago(r.d.last) === 'vừa xong' ? '' : ' trước') : 'chưa động hôm nay'}</small></td>
+      <td><i class="st ${r.st[0]}">${r.st[1]}</i></td><td>${r.d.done}</td><td>${r.i.queued + r.i.asks}</td><td>${r.d.durN ? dur(r.d.durSum / r.d.durN) : '–'}</td></tr>`).join('')}
+    </tbody></table>
+    <h3>Giờ nào bận <small>(${stats.logToday} hoạt động)</small></h3>
+    <div class="rp-hours">${stats.hours.map((n, h) => `<i title="${h}h: ${n} hoạt động" class="${h === nowH ? 'now' : ''}" style="height:${Math.round(n / max * 100)}%"></i>`).join('')}</div>
+    <div class="rp-axis"><span>0h</span><span>6h</span><span>12h</span><span>18h</span><span>23h</span></div>
+    <p class="hint">Số liệu lấy từ bảng việc và nhật ký thật trên máy (nhật ký giữ 500 dòng gần nhất). Bấm một nhà để bay tới.</p>`;
+}
+document.addEventListener('click', e => { const tr = e.target.closest('[data-house]'); if (tr) openHouse(tr.dataset.house); });
+setInterval(() => { renderReport(true); if (selected) loadStats(true).then(() => selected && renderDetail(selected)); }, 30000);
 
 // ---------- Tiếng báo + thông báo nổi theo sự kiện thật ----------
 // So nhật ký mới với lần trước: mục nào mới thì kêu đúng loại tiếng
@@ -488,7 +609,8 @@ function announce(s) {
     else if (e.kind === 'handoff') fire('handoff', who, e.text);
     else if (e.kind === 'start') fire('notify', who, e.text);
     else if (e.kind === 'approval') {
-      if (/^(Xin quyền|Gửi )/.test(e.text)) fire('alert', who, e.text);
+      if (/^Hỏi bạn/.test(e.text)) fire('alert', who, e.text);
+      else if (/^(Xin quyền|Gửi )/.test(e.text)) fire('alert', who, e.text);
       else if (/duyệt/.test(e.text) && !/từ chối/.test(e.text)) fire('ok', who, e.text);
     }
   }
@@ -498,11 +620,12 @@ function announce(s) {
 const TOAST_ICON = { alert: 'bell', error: 'warn', done: 'ok', ok: 'ok', handoff: 'mail', notify: 'play', info: 'mail', calm: 'mail', choice: 'bell' };
 const TOAST_TITLE = { alert: 'Cần bạn duyệt', error: 'Có lỗi', done: 'Xong việc', ok: 'Đã được duyệt', handoff: 'Bàn giao', notify: 'Việc mới', calm: 'Calm trả lời' };
 function toast(kind, who, text, onClick) {
+  addNotif(kind, who, text);
   const box = $('#toasts');
   const el = document.createElement('div');
   el.className = 'toast ' + kind;
   const title = TOAST_TITLE[kind] ? `${TOAST_TITLE[kind]} · ${who}` : who;
-  el.innerHTML = `<img class="ic" src="${UI}icon-${TOAST_ICON[kind] || 'mail'}.webp" alt=""><div><b>${esc(title)}</b><div class="tx">${esc(text)}</div></div><span class="x">×</span>`;
+  el.innerHTML = `<img class="ic" src="${UI}icon-${TOAST_ICON[kind] || 'mail'}.webp" alt=""><div><b>${esc(title)}</b><div class="tx">${esc(human(text, 140))}</div></div><span class="x">×</span>`;
   el.onclick = e => { el.remove(); if (!e.target.classList.contains('x')) onClick?.(); };
   box.prepend(el);
   while (box.children.length > 3) box.lastChild.remove();
@@ -521,6 +644,67 @@ function showErr(who, text) {
     post('/api/chat/send', { text: `Có lỗi trong thị trấn: ${who}: "${text}". Bạn xem nguyên nhân rồi làm lại giúp mình, xong báo mình kết quả.` });
     openRoom();
   };
+}
+
+// ---------- Chữ dễ đọc: bỏ đường dẫn dài, lệnh dài, cắt gọn ----------
+function human(t, max = 110) {
+  t = String(t || '').replace(/[`*]/g, '')
+    .replace(/(?:[A-Za-z]:)?(?:[\\/][\w.\-@ ]+){2,}[\\/]?/g, m => '…/' + m.split(/[\\/]/).filter(Boolean).pop())
+    .replace(/\s+/g, ' ').trim();
+  return t.length > max ? t.slice(0, max - 1).trimEnd() + '…' : t;
+}
+
+// ---------- Khung chat trực tiếp (dưới trái) ----------
+const CHAT_ICON = { error: '⚠', done: '✔', handoff: '➜', start: '▶', approval: '✋', notify: '•', info: '' };
+let chatOpen = (() => { try { return localStorage.getItem('town.chatOpen') !== '0'; } catch { return true; } })();
+if (innerWidth < 900 && (() => { try { return localStorage.getItem('town.chatOpen') === null; } catch { return true; } })()) chatOpen = false;
+function setChat(open) {
+  chatOpen = open; $('#chat').classList.toggle('closed', !open);
+  $('#chat-toggle').textContent = open ? '–' : '+';
+  try { localStorage.setItem('town.chatOpen', open ? '1' : '0'); } catch {}
+}
+function renderChat() {
+  if (!state) return;
+  const asks = [
+    ...state.approvals.map(q => ({ id: q.id, who: q.agent, text: 'Xin quyền: ' + q.summary })),
+    ...state.board.filter(t => t.status === 'waiting_approval').map(t => ({ id: t.id, task: true, who: t.agent, text: `${t.id}: ${t.title}` })),
+  ];
+  $('#chat-pending').textContent = asks.length + ' chờ duyệt';
+  $('#chat-pending').classList.toggle('hidden', !asks.length);
+  $('#chat-asks').innerHTML = asks.slice(0, 3).map(a => `<li><div class="ask-t"${a.task ? ` data-task="${esc(a.id)}"` : ''}><b style="color:${esc(colorOf(a.who))}">${esc(nameOf(a.who))}</b> ${esc(human(a.text, 80))}</div>
+    <div class="ask-b"><button class="btn-ok" data-decide="${esc(a.id)}" data-ok="1">Duyệt</button><button class="btn-no" data-decide="${esc(a.id)}" data-ok="0">Từ chối</button></div></li>`).join('')
+    + (asks.length > 3 ? `<li class="more" data-act-open="overview">+${asks.length - 3} việc khác chờ duyệt…</li>` : '');
+  const box = $('#chat-msgs'), atEnd = box.scrollHeight - box.scrollTop - box.clientHeight < 30;
+  const items = state.log.slice(-25);
+  box.innerHTML = items.length ? items.map(e => {
+    const tid = (e.text.match(/\b[A-Z]{2,5}-\d{3,}\b/) || [])[0];
+    return `<div class="msg ${esc(e.kind)}"${tid ? ` data-task="${tid}"` : ''} title="${esc(e.text)}"><i class="av" style="background:${esc(colorOf(e.agent))}">${esc(nameOf(e.agent).slice(0, 1))}</i>
+      <div class="bb"><div class="mh"><b>${esc(nameOf(e.agent))}</b><time>${hhmm(e.ts)}</time></div><div class="mt">${CHAT_ICON[e.kind] ? `<span class="k">${CHAT_ICON[e.kind]}</span> ` : ''}${esc(human(e.text))}</div></div></div>`;
+  }).join('') : '<div class="empty">Chưa có hoạt động nào.</div>';
+  if (atEnd || !box.dataset.init) { box.scrollTop = box.scrollHeight; box.dataset.init = 1; }
+}
+
+// ---------- Lịch sử thông báo (lưu trong trình duyệt) ----------
+const NF_KEY = 'town.notifs';
+let notifs = (() => { try { return JSON.parse(localStorage.getItem(NF_KEY)) || []; } catch { return []; } })();
+const saveNotifs = () => { try { localStorage.setItem(NF_KEY, JSON.stringify(notifs.slice(0, 100))); } catch {} };
+function addNotif(kind, who, text) {
+  const tid = (String(text).match(/\b[A-Z]{2,5}-\d{3,}\b/) || [])[0];
+  notifs.unshift({ kind, who, text: String(text || ''), task: tid || null, ts: Date.now(), read: false });
+  notifs = notifs.slice(0, 100); saveNotifs(); renderNotifs();
+}
+function markRead() { notifs.forEach(n => n.read = true); saveNotifs(); renderNotifs(); }
+function renderNotifs() {
+  const unread = notifs.filter(n => !n.read).length, b = $('#notif-badge');
+  b.textContent = unread > 99 ? '99+' : unread; b.classList.toggle('hidden', !unread);
+  $('#btn-notifs').title = unread ? `Thông báo: ${unread} chưa đọc · phím N` : 'Thông báo · phím N';
+  $('#nf-unread').textContent = unread + ' chưa đọc'; $('#nf-unread').classList.toggle('hidden', !unread);
+  $('#nf-readall').disabled = !unread;
+  if ($('#notifs').classList.contains('hidden')) return;
+  $('#nf-list').innerHTML = notifs.length ? notifs.map((n, i) => `<li class="nf ${esc(n.kind)}${n.read ? '' : ' unread'}" data-nf="${i}">
+    <img src="${UI}icon-${TOAST_ICON[n.kind] || 'mail'}.webp" alt=""><div><b>${esc(TOAST_TITLE[n.kind] || 'Thông báo')} · ${esc(n.who)}</b>
+    <div class="tx">${esc(human(n.text, 120))}</div><time>${new Date(n.ts).toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })}</time></div></li>`).join('')
+    : '<li class="empty">Chưa có thông báo.</li>';
 }
 
 const nameOf = id => state?.agents.find(a => a.id === id)?.name || id;
@@ -545,7 +729,7 @@ function renderOverview(s) {
   $('#approvals').innerHTML = items.length ? items.map(i => `
     <li><div class="${i.task ? 'link' : ''}"${i.task ? ` data-task="${esc(i.id)}"` : ''}>
         <div class="ap-id">${esc(i.task ? i.id : 'Xin quyền')}</div><div class="ap-title">${esc(i.title)}</div></div>
-      <div class="meta">${esc(nameOf(i.who))} · ${esc(i.kind)} · ${hhmm(i.ts)}</div>
+      <div class="meta">${esc(nameOf(i.who))} · ${esc(i.kind)} · <b class="age">chờ ${ago(i.ts)}</b></div>
       <div class="row"><button class="btn-ok" data-decide="${esc(i.id)}" data-ok="1">Duyệt</button>
       <button class="btn-no" data-decide="${esc(i.id)}" data-ok="0">Từ chối</button></div></li>`).join('')
     : '<li class="empty">Không có gì chờ duyệt.</li>';
@@ -564,11 +748,11 @@ function renderLog(log) {
     const d = new Date(e.ts).toLocaleDateString('vi-VN', { weekday: 'long', day: '2-digit', month: '2-digit' });
     if (d !== day) { html += `<div class="day">${esc(d)}</div>`; day = d; }
     const tid = (e.text.match(/\b[A-Z]{2,5}-\d{3,}\b/) || [])[0];
-    html += `<div class="e ${esc(e.kind)}${tid ? ' link' : ''}"${tid ? ` data-task="${tid}"` : ''}><i class="d" style="background:${esc(colorOf(e.agent))}"></i><time>${hhmm(e.ts)}</time><span class="who">${esc(nameOf(e.agent))}</span><span class="txt">${esc(e.text)}</span></div>`;
+    html += `<div class="e ${esc(e.kind)}${tid ? ' link' : ''}"${tid ? ` data-task="${tid}"` : ''} title="${esc(e.text)}"><i class="d" style="background:${esc(colorOf(e.agent))}"></i><time>${hhmm(e.ts)}</time><span class="who">${esc(nameOf(e.agent))}</span><span class="txt">${esc(human(e.text))}</span></div>`;
   }
   $('#logbody').innerHTML = html || '<div class="empty">Chưa có nhật ký.</div>';
   const last = log[log.length - 1];
-  $('#ticker-txt').textContent = last ? `${hhmm(last.ts)} · ${nameOf(last.agent)} · ${last.text}` : 'Chưa có nhật ký.';
+  renderChat();
 }
 
 const stateText = { idle: 'Rảnh', working: 'Đang làm', waiting: 'Chờ bạn', done: 'Vừa xong', error: 'Lỗi' };
@@ -593,12 +777,24 @@ function renderDetail(id) {
     <div class="ag-sec"><h4>Việc gần đây</h4>
       ${tasks.length ? '<ul>' + tasks.map(t => `<li class="link" data-task="${esc(t.id)}"><span class="ck">${t.status === 'done' || t.status === 'approved' ? '✔' : '•'}</span><b>${esc(t.id)}</b><span class="tt">${esc(t.title)}</span><span class="tag ${t.status}">${statusText[t.status] || t.status}</span></li>`).join('') + '</ul>' : '<div class="empty">Chưa có.</div>'}
     </div>
+    ${houseHtml(a)}
     ${routinesHtml(a)}
     <div class="ag-sec"><h4>Giao việc</h4><div class="empty">${picked === a.id ? 'Đã chọn. Bấm vào một ngôi nhà để giao việc thật.' : 'Bấm nhân vật để chọn, rồi bấm một nhà để đi giao việc.'}</div></div>
     <div class="ag-sec"><details><summary>Thao tác vừa rồi, tệp và kỹ năng</summary>
       ${a.tools.length ? '<ul style="margin-top:6px">' + a.tools.slice(0, 8).map(t => `<li><time>${hhmm(t.ts)}</time> ${esc(t.text)}</li>`).join('') + '</ul>' : '<div class="empty">Chưa có thao tác.</div>'}
       <div class="chips">${[...a.files, ...a.skills].map(f => `<span class="chip">${esc(f)}</span>`).join('')}</div>
     </details></div>`;
+}
+// Bảng thông tin nhà (giống bảng công trình trong game quản lý): hôm nay làm được gì, đang chờ gì
+function houseHtml(a) {
+  if (a.isGuest) return '';
+  const hid = houseOf(a.home || a.id), i = houseInfo(state, hid), d = houseToday(hid);
+  const queue = i.tasks.filter(t => t.status === 'queued' || t.status === 'waiting_approval').slice(-4);
+  return `<div class="ag-sec house"><h4>${hid === 'coder' ? 'Xưởng Code' : 'Nhà này'} hôm nay</h4>
+    <div class="hs-row"><span><b>${stats ? d.done : '…'}</b>xong</span><span><b>${i.working}</b>đang làm</span><span class="${i.asks ? 'w' : ''}"><b>${i.asks}</b>chờ duyệt</span><span><b>${i.queued}</b>chờ làm</span><span><b>${d.durN ? dur(d.durSum / d.durN) : '–'}</b>TB/việc</span></div>
+    ${i.stuck ? `<div class="hs-warn">⏳ Đang làm nhưng đã hơn 10 phút không thấy động tĩnh, có thể đang kẹt.</div>` : ''}
+    ${queue.length ? '<ul>' + queue.map(t => `<li class="link" data-task="${esc(t.id)}"><b>${esc(t.id)}</b><span class="tt">${esc(t.title)}</span><span class="tag ${t.status}">${statusText[t.status]}</span></li>`).join('') + '</ul>' : ''}
+  </div>`;
 }
 // Lịch định kỳ của nhân vật (town.config.json → routines)
 function routinesHtml(a) {
@@ -635,6 +831,7 @@ function openDetail(id) {
   selected = id;
   $('#detail').classList.remove('hidden');
   renderDetail(id);
+  loadStats().then(() => selected === id && renderDetail(id));
 }
 $('#detail-close').onclick = () => { selected = null; $('#detail').classList.add('hidden'); };
 
@@ -655,6 +852,7 @@ const toggles = {
   bubbles: b => { b.classList.toggle('on', !document.body.classList.toggle('hide-bubbles')); },
   home: () => { camera.position.set(0, 0, 200); camera.zoom = 1; camera.updateProjectionMatrix(); controls.target.set(0, 0, 0); },
   overview: () => drawer('overview'),
+  report: () => drawer('report'),
   log: () => drawer('log'),
   demo: () => post('/api/demo', { on: !state?.settings.demo }),
   sound: b => {
@@ -667,6 +865,7 @@ const toggles = {
     pop.style.setProperty('--arrow', (r.left + r.width / 2 - left - 8) + 'px');
   },
   calm: () => openRoom(),
+  notifs: () => { drawer('notifs'); renderNotifs(); },
   approve1: () => {
     if (!state) return;
     const first = state.approvals[0]?.id || state.board.find(t => t.status === 'waiting_approval')?.id;
@@ -682,6 +881,19 @@ initCalmRoom({
   onUnread: n => { $('#calm-badge').textContent = n; $('#calm-badge').classList.toggle('hidden', !n); },
 });
 $('#log-full').onclick = () => openFullLog();
+$('#chat-full').onclick = () => openFullLog();
+$('#chat-toggle').onclick = () => setChat(!chatOpen);
+$('#chat-head').addEventListener('click', e => { if (!chatOpen && !e.target.closest('button')) setChat(true); });
+setChat(chatOpen);
+document.addEventListener('click', e => { if (e.target.closest('[data-act-open]')) drawer('overview', true); });
+$('#nf-readall').onclick = markRead;
+$('#nf-clear').onclick = () => { notifs = []; saveNotifs(); renderNotifs(); };
+$('#nf-list').addEventListener('click', e => {
+  const li = e.target.closest('[data-nf]'); if (!li) return;
+  const n = notifs[+li.dataset.nf]; n.read = true; saveNotifs(); renderNotifs();
+  if (n.task) { focusTask(n.task); openTask(n.task); } else if (n.kind === 'calm') openRoom(); else if (n.kind === 'alert') drawer('overview', true);
+});
+renderNotifs();
 // Thẻ âm thanh nhanh dưới lưới nút
 const fill = el => el.style.setProperty('--v', el.value + '%');
 const syncSoundIcon = () => {
@@ -707,14 +919,25 @@ function drawer(id, force) {
   const el = $('#' + id), open = force ?? el.classList.contains('hidden');
   el.classList.toggle('hidden', !open);
   document.querySelectorAll(`[data-act=${id}]`).forEach(b => b.classList.toggle('on', open));
-  if (open && innerWidth < 900) for (const o of ['overview', 'log']) if (o !== id) drawer(o, false);
+  if (open && id === 'report') renderReport(true);
+  if (open && innerWidth < 900) for (const o of ['overview', 'log', 'notifs', 'report']) if (o !== id) drawer(o, false);
 }
 document.querySelectorAll('[data-drawer]').forEach(b => b.onclick = () => drawer(b.dataset.drawer, false));
 $('#soundpop-close').onclick = () => { $('#soundpop').classList.add('hidden'); $('#btn-sound').classList.remove('on'); };
 addEventListener('keydown', e => {
   if (e.key !== 'Escape' || document.querySelector('.modal-wrap:not(.hidden)')) return;
-  drawer('overview', false); drawer('log', false); $('#soundpop-close').onclick();
+  drawer('overview', false); drawer('log', false); drawer('notifs', false); drawer('report', false); $('#soundpop-close').onclick();
 });
+// Phím tắt: 1–7 bay tới từng nhà, A duyệt nhanh, N thông báo, T tổng quan, H hôm nay, L nhật ký
+addEventListener('keydown', e => {
+  if (e.ctrlKey || e.metaKey || e.altKey || e.target.closest('input, textarea, select') || document.querySelector('.modal-wrap:not(.hidden)')) return;
+  const k = e.key.toLowerCase(), n = Number(e.key);
+  if (n >= 1 && n <= HOTKEY_HOUSES.length) return openHouse(HOTKEY_HOUSES[n - 1]);
+  const act = { a: 'approve1', n: 'notifs', t: 'overview', h: 'report', l: 'log' }[k];
+  if (act) { sound.play('click'); toggles[act]($(`[data-act=${act}]`)); }
+});
+renderer.domElement.addEventListener('pointerdown', () => { focusGoal = null; });
+renderer.domElement.addEventListener('wheel', () => { focusGoal = null; }, { passive: true });
 
 // Bấm vào nhân vật hoặc ngôi nhà để xem chi tiết (chỉ tính phần có hình, bỏ nền trong suốt)
 const ray = new THREE.Raycaster();
@@ -736,6 +959,7 @@ renderer.domElement.addEventListener('pointerup', e => {
   const id = hit.object.userData.agentId;
   if (hit.object.userData.house) {
     if (picked) return askSend(picked, id);
+    focusHouse(hit.object.userData.house);
     return openDetail(id);
   }
   setPicked(picked === id ? null : id);
@@ -940,6 +1164,7 @@ function tick(now) {
     camera.position.x += ox; controls.target.x += ox;
     camera.position.y += oy; controls.target.y += oy;
   }
+  stepFocus();
   controls.update();
   clampView();
   renderer.render(scene, camera);
