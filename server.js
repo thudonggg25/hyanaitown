@@ -410,6 +410,36 @@ const api = {
     sendJson(res, 200, out);
   },
   'GET /api/state': (req, res) => sendJson(res, 200, snapshot()),
+  // Báo cáo trong ngày: tính từ bảng việc và nhật ký thật (không có số giả)
+  'GET /api/stats': (req, res) => {
+    const day = new Date(); day.setHours(0, 0, 0, 0);
+    const today = ts => ts && new Date(ts) >= day;
+    const per = {};
+    const row = id => (per[id] ||= { done: 0, created: 0, errors: 0, durSum: 0, durN: 0, last: null });
+    for (const t of board) {
+      const r = row(t.agent);
+      if (today(t.createdAt)) r.created++;
+      if (['done', 'approved', 'answered'].includes(t.status) && today(t.updatedAt)) {
+        r.done++;
+        const d = new Date(t.updatedAt) - new Date(t.createdAt);
+        if (d > 0 && d < 86400000) { r.durSum += d; r.durN++; }
+      }
+      if (['error', 'rejected'].includes(t.status) && today(t.updatedAt)) r.errors++;
+    }
+    const hours = Array(24).fill(0);
+    let approvalsAsked = 0, approvalsDone = 0;
+    for (const e of log) {
+      if (!today(e.ts)) continue;
+      hours[new Date(e.ts).getHours()]++;
+      const r = row(e.agent);
+      if (!r.last || e.ts > r.last) r.last = e.ts;
+      if (e.kind === 'approval') {
+        if (/^(Xin quyền|Gửi |Hỏi bạn)/.test(e.text)) approvalsAsked++;
+        else if (/^(Bạn đã|Được duyệt|Bị từ chối|Bạn trả lời)/.test(e.text)) approvalsDone++;
+      }
+    }
+    sendJson(res, 200, { since: day.toISOString(), agents: per, hours, approvalsAsked, approvalsDone, logToday: hours.reduce((a, b) => a + b, 0) });
+  },
   // Duyệt / từ chối một yêu cầu xin quyền hoặc một việc trên bảng
   'POST /api/decide': async (req, res) => {
     const { id, approve, note } = await readBody(req);

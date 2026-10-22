@@ -628,7 +628,7 @@ html, body { overflow: hidden; }
 #chat-msgs .msg.error .mt { color: #ff9d8a; }
 #chat-msgs .msg.done .mt .k { color: #7fd99a; }
 #chat-msgs .msg.approval .mt { color: #ffcf75; }
-body:has(#log:not(.hidden)) #chat { display: none; }
+body:has(#log:not(.hidden)) #chat, body:has(#report:not(.hidden)) #chat { display: none; }
 #log { bottom: 10px; }
 
 /* ---------- Bảng lịch sử thông báo ---------- */
@@ -673,4 +673,66 @@ body:has(#log:not(.hidden)) #chat { display: none; }
   #toasts { top: 100px; }
   #topbar .tile { width: 38px; height: 38px; }
   #brand { max-width: calc(100% - 16px - 262px); }
+}
+
+/* ---------- Đếm chưa đọc + chờ duyệt cho thật nổi ---------- */
+#notif-badge { min-width: 24px; height: 24px; line-height: 24px; font-size: 13px; font-weight: 800; border: 2px solid #fff3d6; }
+.badge.warn { background: #f08c1c; border: 2px solid #fff3d6; font-weight: 800; min-width: 26px; height: 26px; line-height: 22px; font-size: 14px; top: -10px; right: -10px; }
+.hud .tile.primary.pulse { animation: ap-pulse 1.6s ease-in-out infinite; }
+@keyframes ap-pulse { 0%, 100% { box-shadow: 0 2px 0 #245c34, 0 0 0 0 rgba(255, 170, 60, .0); } 50% { box-shadow: 0 2px 0 #245c34, 0 0 0 6px rgba(255, 170, 60, .55); } }
+@media (prefers-reduced-motion: reduce) { .hud .tile.primary.pulse { animation: none; box-shadow: 0 2px 0 #245c34, 0 0 0 3px rgba(255, 170, 60, .7); } }
+#chat-head #chat-pending { background: #f08c1c; color: #fff; font-weight: 800; font-size: 12.5px; padding: 2px 9px; border-radius: 99px; border: 1.5px solid #fff3d6; white-space: nowrap; }
+.unread-pill { font-size: 13px; vertical-align: middle; background: var(--bad); color: #fff; padding: 2px 9px; border-radius: 99px; margin-left: 6px; text-shadow: none; }
+#nf-readall:disabled { opacity: .5; cursor: default; }
+#nf-list .nf.unread b::after { content: "mới"; margin-left: 6px; font-size: 10.5px; background: var(--bad); color: #fff; border-radius: 99px; padding: 1px 6px; }
+.age { color: #b45f12; }
+.ico { width: 26px; height: 26px; fill: none; stroke: #4a2f17; stroke-width: 2.6; stroke-linecap: round; }
+
+/* ---------- Trạng thái trên mái nhà ---------- */
+.hstat { pointer-events: none; }
+.hs-in { display: flex; gap: 4px; transform: translateY(-34px); white-space: nowrap; }
+.hstat:empty { display: none; }
+.hstat i { font-style: normal; font-size: 11.5px; font-weight: 800; padding: 1px 8px; border-radius: 99px; color: #fff; box-shadow: 0 2px 4px rgba(30, 20, 10, .3); border: 1.5px solid rgba(255, 255, 255, .85); }
+.hstat .w { background: #f08c1c; animation: ap-blink 1.4s ease-in-out infinite; }
+.hstat .e { background: #d0533f; }
+.hstat .s { background: #8a6bbf; }
+.hstat .r { background: #43995a; }
+.hstat .q { background: #5b6d8a; }
+@keyframes ap-blink { 50% { transform: scale(1.08); } }
+@media (prefers-reduced-motion: reduce) { .hstat .w { animation: none; } }
+.hide-names .hstat { display: none; }
+
+/* ---------- Bảng thông tin nhà ---------- */
+.ag-sec.house .hs-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; margin-bottom: 6px; }
+.hs-row span { display: grid; text-align: center; font-size: 11.5px; color: var(--muted); background: rgba(255, 255, 255, .05); border: 1px solid rgba(255, 220, 160, .14); border-radius: 8px; padding: 4px 2px; }
+.hs-row b { font-size: 16px; color: #fff3d6; }
+.hs-row span.w { border-color: #e9a93a; } .hs-row span.w b { color: #ffc46b; }
+.hs-warn { font-size: 13px; color: #e6d3ff; background: rgba(138, 107, 191, .2); border-radius: 8px; padding: 5px 8px; margin-bottom: 6px; }
+.ag-sec.house li { display: flex; gap: 6px; align-items: center; }
+
+/* ---------- Báo cáo hôm nay ---------- */
+#report { top: 128px; left: 126px; width: 420px; max-height: calc(100% - 150px); overflow: auto; animation: in-l .25s ease-out; }
+.rp-tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: 8px 0; }
+.rp-tiles div { display: grid; text-align: center; background: rgba(255, 255, 255, .05); border: 1px solid rgba(255, 220, 160, .14); border-radius: 10px; padding: 6px 2px; }
+.rp-tiles b { font-size: 22px; color: #fff3d6; }
+.rp-tiles span { font-size: 11px; color: var(--muted); font-weight: 700; }
+.rp-tiles .bad { border-color: #e2604b; }
+.rp-best { margin: 4px 0 8px; font-size: 13.5px; }
+.rp-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.rp-table th { text-align: left; font-size: 11.5px; color: var(--muted); font-weight: 700; padding: 3px 4px; }
+.rp-table td { padding: 5px 4px; border-top: 1px solid rgba(255, 220, 160, .12); vertical-align: middle; }
+.rp-table td small { display: block; color: var(--muted); font-size: 11px; }
+.rp-table tr[data-house] { cursor: pointer; }
+.rp-table tr[data-house]:hover { background: rgba(255, 240, 210, .08); }
+.st { font-style: normal; font-size: 11.5px; font-weight: 800; padding: 1px 7px; border-radius: 99px; color: #fff; white-space: nowrap; }
+.st.r { background: #43995a; } .st.w { background: #f08c1c; } .st.e { background: #d0533f; } .st.s { background: #8a6bbf; } .st.i { background: #6f7f71; }
+.rp-hours { display: flex; align-items: flex-end; gap: 2px; height: 60px; margin-top: 6px; border-bottom: 1px solid rgba(255, 220, 160, .25); }
+.rp-hours i { flex: 1; background: #7fb98a; border-radius: 2px 2px 0 0; min-height: 1px; }
+.rp-hours i.now { background: #ffcf75; }
+.rp-axis { display: flex; justify-content: space-between; font-size: 10.5px; color: var(--muted); }
+@media (max-width: 900px) {
+  #report { top: auto; left: 8px; right: 8px; bottom: 8px; width: auto; max-height: calc(100% - 300px); z-index: 7; }
+  .hstat i { font-size: 10px; padding: 0 5px; }
+  .badge.warn { min-width: 22px; height: 22px; line-height: 18px; font-size: 12px; top: -8px; right: -8px; }
+  .ico { width: 22px; height: 22px; }
 }

@@ -36,9 +36,10 @@
   <nav id="leftbar" class="wood hud vbar">
     <button data-act="calm" id="btn-calm" class="tile calm-btn" title="Phòng Calm: giao việc và đọc trả lời"><img src="assets/ui/icon-mail.webp" alt=""><span>Calm</span><b id="calm-badge" class="badge hidden">0</b></button>
     <button data-act="overview" class="tile" title="Tổng quan: chờ duyệt, bảng việc"><img src="assets/ui/icon-map.webp" alt=""><span>Tổng quan</span></button>
+    <button data-act="report" class="tile" title="Báo cáo hôm nay: mỗi nhà làm được bao nhiêu (phím H)"><svg class="ico" viewBox="0 0 24 24"><path d="M4 20h16M7 17v-5M12 17V7M17 17v-8"/></svg><span>Hôm nay</span></button>
     <button data-act="log" class="tile" title="Nhật ký việc"><img src="assets/ui/icon-log.webp" alt=""><span>Nhật ký</span></button>
     <button data-act="demo" id="btn-demo" class="tile" title="Chạy thử với việc giả"><img src="assets/ui/icon-play.webp" alt=""><span>Tự chạy</span></button>
-    <button data-act="approve1" id="btn-approve1" class="tile primary" title="Duyệt việc đầu tiên đang chờ"><img src="assets/ui/icon-ok.webp" alt=""><span>Duyệt nhanh</span></button>
+    <button data-act="approve1" id="btn-approve1" class="tile primary" title="Duyệt việc đầu tiên đang chờ"><img src="assets/ui/icon-ok.webp" alt=""><span>Duyệt nhanh</span><b id="approve-badge" class="badge warn hidden">0</b></button>
   </nav>
 
   <!-- Cạnh phải: bộ đếm gọn, bấm để mở Tổng quan -->
@@ -61,7 +62,7 @@
   <!-- Lịch sử thông báo -->
   <aside id="notifs" class="panel hidden">
     <button class="close" data-drawer="notifs" aria-label="Đóng">×</button>
-    <h2>Thông báo</h2>
+    <h2>Thông báo <small id="nf-unread" class="unread-pill hidden"></small></h2>
     <div class="nf-bar"><button id="nf-readall" class="pill">Đánh dấu đã đọc hết</button><button id="nf-clear" class="pill">Xoá</button></div>
     <ul id="nf-list"></ul>
   </aside>
@@ -214,6 +215,12 @@
     <ul id="board" class="list compact"></ul>
   </aside>
 
+  <aside id="report" class="panel drawer hidden">
+    <h2>Hôm nay</h2>
+    <button class="close" data-drawer="report" aria-label="Đóng">×</button>
+    <div id="report-body"><div class="empty">Đang tính…</div></div>
+  </aside>
+
   <aside id="log" class="panel drawer hidden">
     <h2>Nhật ký việc</h2>
     <button class="close" data-drawer="log" aria-label="Đóng">×</button>
@@ -226,7 +233,7 @@
     <div id="detailbody"></div>
   </aside>
 
-  <footer id="credits">Kéo để di chuyển · cuộn để phóng to · bấm nhân vật, nhà hay việc để xem chi tiết · chọn nhân vật rồi bấm một nhà để giao việc thật</footer>
+  <footer id="credits">Kéo để di chuyển · cuộn để phóng to · bấm nhân vật, nhà hay việc để xem chi tiết · chọn nhân vật rồi bấm một nhà để giao việc thật · phím 1–7 xem từng nhà, A duyệt nhanh, N thông báo, H hôm nay</footer>
 
   <script type="module" src="app.js"></script>
 </body>
