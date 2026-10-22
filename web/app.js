@@ -453,7 +453,7 @@ function apply(s) {
   renderLog(s.log);
   if (selected) renderDetail(selected);
   $('#btn-demo').classList.toggle('on', !!s.settings.demo);
-  $('#btn-demo span').textContent = s.settings.demo ? 'Dừng tự chạy' : 'Tự chạy';
+  $('#btn-demo span').textContent = s.settings.demo ? 'Dừng chạy' : 'Tự chạy';
   $('#btn-demo img').src = UI + (s.settings.demo ? 'icon-no.webp' : 'icon-play.webp');
   const pending = s.approvals.length + s.board.filter(t => t.status === 'waiting_approval').length;
   $('#btn-approve1').disabled = pending === 0;
@@ -488,7 +488,8 @@ function announce(s) {
     else if (e.kind === 'handoff') fire('handoff', who, e.text);
     else if (e.kind === 'start') fire('notify', who, e.text);
     else if (e.kind === 'approval') {
-      if (/^(Xin quyền|Gửi )/.test(e.text)) fire('alert', who, e.text);
+      if (/^Hỏi bạn/.test(e.text)) fire('alert', who, e.text);
+      else if (/^(Xin quyền|Gửi )/.test(e.text)) fire('alert', who, e.text);
       else if (/duyệt/.test(e.text) && !/từ chối/.test(e.text)) fire('ok', who, e.text);
     }
   }
@@ -498,11 +499,12 @@ function announce(s) {
 const TOAST_ICON = { alert: 'bell', error: 'warn', done: 'ok', ok: 'ok', handoff: 'mail', notify: 'play', info: 'mail', calm: 'mail', choice: 'bell' };
 const TOAST_TITLE = { alert: 'Cần bạn duyệt', error: 'Có lỗi', done: 'Xong việc', ok: 'Đã được duyệt', handoff: 'Bàn giao', notify: 'Việc mới', calm: 'Calm trả lời' };
 function toast(kind, who, text, onClick) {
+  addNotif(kind, who, text);
   const box = $('#toasts');
   const el = document.createElement('div');
   el.className = 'toast ' + kind;
   const title = TOAST_TITLE[kind] ? `${TOAST_TITLE[kind]} · ${who}` : who;
-  el.innerHTML = `<img class="ic" src="${UI}icon-${TOAST_ICON[kind] || 'mail'}.webp" alt=""><div><b>${esc(title)}</b><div class="tx">${esc(text)}</div></div><span class="x">×</span>`;
+  el.innerHTML = `<img class="ic" src="${UI}icon-${TOAST_ICON[kind] || 'mail'}.webp" alt=""><div><b>${esc(title)}</b><div class="tx">${esc(human(text, 140))}</div></div><span class="x">×</span>`;
   el.onclick = e => { el.remove(); if (!e.target.classList.contains('x')) onClick?.(); };
   box.prepend(el);
   while (box.children.length > 3) box.lastChild.remove();
@@ -521,6 +523,64 @@ function showErr(who, text) {
     post('/api/chat/send', { text: `Có lỗi trong thị trấn: ${who}: "${text}". Bạn xem nguyên nhân rồi làm lại giúp mình, xong báo mình kết quả.` });
     openRoom();
   };
+}
+
+// ---------- Chữ dễ đọc: bỏ đường dẫn dài, lệnh dài, cắt gọn ----------
+function human(t, max = 110) {
+  t = String(t || '').replace(/[`*]/g, '')
+    .replace(/(?:[A-Za-z]:)?(?:[\\/][\w.\-@ ]+){2,}[\\/]?/g, m => '…/' + m.split(/[\\/]/).filter(Boolean).pop())
+    .replace(/\s+/g, ' ').trim();
+  return t.length > max ? t.slice(0, max - 1).trimEnd() + '…' : t;
+}
+
+// ---------- Khung chat trực tiếp (dưới trái) ----------
+const CHAT_ICON = { error: '⚠', done: '✔', handoff: '➜', start: '▶', approval: '✋', notify: '•', info: '' };
+let chatOpen = (() => { try { return localStorage.getItem('town.chatOpen') !== '0'; } catch { return true; } })();
+if (innerWidth < 900 && (() => { try { return localStorage.getItem('town.chatOpen') === null; } catch { return true; } })()) chatOpen = false;
+function setChat(open) {
+  chatOpen = open; $('#chat').classList.toggle('closed', !open);
+  $('#chat-toggle').textContent = open ? '–' : '+';
+  try { localStorage.setItem('town.chatOpen', open ? '1' : '0'); } catch {}
+}
+function renderChat() {
+  if (!state) return;
+  const asks = [
+    ...state.approvals.map(q => ({ id: q.id, who: q.agent, text: 'Xin quyền: ' + q.summary })),
+    ...state.board.filter(t => t.status === 'waiting_approval').map(t => ({ id: t.id, task: true, who: t.agent, text: `${t.id}: ${t.title}` })),
+  ];
+  $('#chat-pending').textContent = asks.length + ' chờ duyệt';
+  $('#chat-pending').classList.toggle('hidden', !asks.length);
+  $('#chat-asks').innerHTML = asks.slice(0, 3).map(a => `<li><div class="ask-t"${a.task ? ` data-task="${esc(a.id)}"` : ''}><b style="color:${esc(colorOf(a.who))}">${esc(nameOf(a.who))}</b> ${esc(human(a.text, 80))}</div>
+    <div class="ask-b"><button class="btn-ok" data-decide="${esc(a.id)}" data-ok="1">Duyệt</button><button class="btn-no" data-decide="${esc(a.id)}" data-ok="0">Từ chối</button></div></li>`).join('')
+    + (asks.length > 3 ? `<li class="more" data-act-open="overview">+${asks.length - 3} việc khác chờ duyệt…</li>` : '');
+  const box = $('#chat-msgs'), atEnd = box.scrollHeight - box.scrollTop - box.clientHeight < 30;
+  const items = state.log.slice(-25);
+  box.innerHTML = items.length ? items.map(e => {
+    const tid = (e.text.match(/\b[A-Z]{2,5}-\d{3,}\b/) || [])[0];
+    return `<div class="msg ${esc(e.kind)}"${tid ? ` data-task="${tid}"` : ''} title="${esc(e.text)}"><i class="av" style="background:${esc(colorOf(e.agent))}">${esc(nameOf(e.agent).slice(0, 1))}</i>
+      <div class="bb"><div class="mh"><b>${esc(nameOf(e.agent))}</b><time>${hhmm(e.ts)}</time></div><div class="mt">${CHAT_ICON[e.kind] ? `<span class="k">${CHAT_ICON[e.kind]}</span> ` : ''}${esc(human(e.text))}</div></div></div>`;
+  }).join('') : '<div class="empty">Chưa có hoạt động nào.</div>';
+  if (atEnd || !box.dataset.init) { box.scrollTop = box.scrollHeight; box.dataset.init = 1; }
+}
+
+// ---------- Lịch sử thông báo (lưu trong trình duyệt) ----------
+const NF_KEY = 'town.notifs';
+let notifs = (() => { try { return JSON.parse(localStorage.getItem(NF_KEY)) || []; } catch { return []; } })();
+const saveNotifs = () => { try { localStorage.setItem(NF_KEY, JSON.stringify(notifs.slice(0, 100))); } catch {} };
+function addNotif(kind, who, text) {
+  const tid = (String(text).match(/\b[A-Z]{2,5}-\d{3,}\b/) || [])[0];
+  notifs.unshift({ kind, who, text: String(text || ''), task: tid || null, ts: Date.now(), read: !$('#notifs').classList.contains('hidden') });
+  notifs = notifs.slice(0, 100); saveNotifs(); renderNotifs();
+}
+function markRead() { notifs.forEach(n => n.read = true); saveNotifs(); renderNotifs(); }
+function renderNotifs() {
+  const unread = notifs.filter(n => !n.read).length, b = $('#notif-badge');
+  b.textContent = unread > 99 ? '99+' : unread; b.classList.toggle('hidden', !unread);
+  if ($('#notifs').classList.contains('hidden')) return;
+  $('#nf-list').innerHTML = notifs.length ? notifs.map((n, i) => `<li class="nf ${esc(n.kind)}${n.read ? '' : ' unread'}" data-nf="${i}">
+    <img src="${UI}icon-${TOAST_ICON[n.kind] || 'mail'}.webp" alt=""><div><b>${esc(TOAST_TITLE[n.kind] || 'Thông báo')} · ${esc(n.who)}</b>
+    <div class="tx">${esc(human(n.text, 120))}</div><time>${new Date(n.ts).toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })}</time></div></li>`).join('')
+    : '<li class="empty">Chưa có thông báo.</li>';
 }
 
 const nameOf = id => state?.agents.find(a => a.id === id)?.name || id;
@@ -564,11 +624,11 @@ function renderLog(log) {
     const d = new Date(e.ts).toLocaleDateString('vi-VN', { weekday: 'long', day: '2-digit', month: '2-digit' });
     if (d !== day) { html += `<div class="day">${esc(d)}</div>`; day = d; }
     const tid = (e.text.match(/\b[A-Z]{2,5}-\d{3,}\b/) || [])[0];
-    html += `<div class="e ${esc(e.kind)}${tid ? ' link' : ''}"${tid ? ` data-task="${tid}"` : ''}><i class="d" style="background:${esc(colorOf(e.agent))}"></i><time>${hhmm(e.ts)}</time><span class="who">${esc(nameOf(e.agent))}</span><span class="txt">${esc(e.text)}</span></div>`;
+    html += `<div class="e ${esc(e.kind)}${tid ? ' link' : ''}"${tid ? ` data-task="${tid}"` : ''} title="${esc(e.text)}"><i class="d" style="background:${esc(colorOf(e.agent))}"></i><time>${hhmm(e.ts)}</time><span class="who">${esc(nameOf(e.agent))}</span><span class="txt">${esc(human(e.text))}</span></div>`;
   }
   $('#logbody').innerHTML = html || '<div class="empty">Chưa có nhật ký.</div>';
   const last = log[log.length - 1];
-  $('#ticker-txt').textContent = last ? `${hhmm(last.ts)} · ${nameOf(last.agent)} · ${last.text}` : 'Chưa có nhật ký.';
+  renderChat();
 }
 
 const stateText = { idle: 'Rảnh', working: 'Đang làm', waiting: 'Chờ bạn', done: 'Vừa xong', error: 'Lỗi' };
@@ -667,6 +727,7 @@ const toggles = {
     pop.style.setProperty('--arrow', (r.left + r.width / 2 - left - 8) + 'px');
   },
   calm: () => openRoom(),
+  notifs: () => { drawer('notifs'); renderNotifs(); },
   approve1: () => {
     if (!state) return;
     const first = state.approvals[0]?.id || state.board.find(t => t.status === 'waiting_approval')?.id;
@@ -682,6 +743,19 @@ initCalmRoom({
   onUnread: n => { $('#calm-badge').textContent = n; $('#calm-badge').classList.toggle('hidden', !n); },
 });
 $('#log-full').onclick = () => openFullLog();
+$('#chat-full').onclick = () => openFullLog();
+$('#chat-toggle').onclick = () => setChat(!chatOpen);
+$('#chat-head').addEventListener('click', e => { if (!chatOpen && !e.target.closest('button')) setChat(true); });
+setChat(chatOpen);
+document.addEventListener('click', e => { if (e.target.closest('[data-act-open]')) drawer('overview', true); });
+$('#nf-readall').onclick = markRead;
+$('#nf-clear').onclick = () => { notifs = []; saveNotifs(); renderNotifs(); };
+$('#nf-list').addEventListener('click', e => {
+  const li = e.target.closest('[data-nf]'); if (!li) return;
+  const n = notifs[+li.dataset.nf]; n.read = true; saveNotifs(); renderNotifs();
+  if (n.task) openTask(n.task); else if (n.kind === 'calm') openRoom(); else if (n.kind === 'alert') drawer('overview', true);
+});
+renderNotifs();
 // Thẻ âm thanh nhanh dưới lưới nút
 const fill = el => el.style.setProperty('--v', el.value + '%');
 const syncSoundIcon = () => {
@@ -707,13 +781,14 @@ function drawer(id, force) {
   const el = $('#' + id), open = force ?? el.classList.contains('hidden');
   el.classList.toggle('hidden', !open);
   document.querySelectorAll(`[data-act=${id}]`).forEach(b => b.classList.toggle('on', open));
-  if (open && innerWidth < 900) for (const o of ['overview', 'log']) if (o !== id) drawer(o, false);
+  if (open && id === 'notifs') markRead();
+  if (open && innerWidth < 900) for (const o of ['overview', 'log', 'notifs']) if (o !== id) drawer(o, false);
 }
 document.querySelectorAll('[data-drawer]').forEach(b => b.onclick = () => drawer(b.dataset.drawer, false));
 $('#soundpop-close').onclick = () => { $('#soundpop').classList.add('hidden'); $('#btn-sound').classList.remove('on'); };
 addEventListener('keydown', e => {
   if (e.key !== 'Escape' || document.querySelector('.modal-wrap:not(.hidden)')) return;
-  drawer('overview', false); drawer('log', false); $('#soundpop-close').onclick();
+  drawer('overview', false); drawer('log', false); drawer('notifs', false); $('#soundpop-close').onclick();
 });
 
 // Bấm vào nhân vật hoặc ngôi nhà để xem chi tiết (chỉ tính phần có hình, bỏ nền trong suốt)

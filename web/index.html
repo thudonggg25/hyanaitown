@@ -28,6 +28,7 @@
     <button data-act="names" class="tile on" title="Hiện / ẩn tên"><img src="assets/ui/icon-name.webp" alt=""><span>Tên</span></button>
     <button data-act="bubbles" class="tile on" title="Hiện / ẩn bong bóng"><img src="assets/ui/icon-bubble.webp" alt=""><span>Bong bóng</span></button>
     <button data-act="home" class="tile" title="Xem toàn cảnh"><img src="assets/ui/icon-home.webp" alt=""><span>Toàn cảnh</span></button>
+    <button data-act="notifs" id="btn-notifs" class="tile" title="Thông báo"><img src="assets/ui/icon-bell.webp" alt=""><span>Thông báo</span><b id="notif-badge" class="badge hidden">0</b></button>
     <button data-act="sound" id="btn-sound" class="tile" title="Âm thanh và thông báo"><img src="assets/ui/icon-sound.webp" alt=""><span>Âm thanh</span></button>
   </nav>
 
@@ -37,7 +38,7 @@
     <button data-act="overview" class="tile" title="Tổng quan: chờ duyệt, bảng việc"><img src="assets/ui/icon-map.webp" alt=""><span>Tổng quan</span></button>
     <button data-act="log" class="tile" title="Nhật ký việc"><img src="assets/ui/icon-log.webp" alt=""><span>Nhật ký</span></button>
     <button data-act="demo" id="btn-demo" class="tile" title="Chạy thử với việc giả"><img src="assets/ui/icon-play.webp" alt=""><span>Tự chạy</span></button>
-    <button data-act="approve1" id="btn-approve1" class="tile primary" title="Duyệt việc đầu tiên đang chờ"><img src="assets/ui/icon-ok.webp" alt=""><span>1 bước duyệt</span></button>
+    <button data-act="approve1" id="btn-approve1" class="tile primary" title="Duyệt việc đầu tiên đang chờ"><img src="assets/ui/icon-ok.webp" alt=""><span>Duyệt nhanh</span></button>
   </nav>
 
   <!-- Cạnh phải: bộ đếm gọn, bấm để mở Tổng quan -->
@@ -48,8 +49,22 @@
     <button class="cnt bad" data-act="overview"><img src="assets/ui/icon-warn.webp" alt=""><b id="c-error">0</b><span>Lỗi</span></button>
   </nav>
 
-  <!-- Cạnh dưới: dòng nhật ký mới nhất -->
-  <button id="ticker" class="wood hud" data-act="log" title="Bấm để mở Nhật ký"><img src="assets/ui/icon-log.webp" alt=""><span id="ticker-txt">Chưa có nhật ký.</span></button>
+  <!-- Dưới trái: khung chat trực tiếp (gọn, thu lại được) -->
+  <aside id="chat" class="wood">
+    <header id="chat-head"><span class="live"></span><b>Đang diễn ra</b><small id="chat-pending" class="hidden"></small><button id="chat-full" class="mini-btn" title="Nhật ký đầy đủ">Nhật ký</button><button id="chat-toggle" class="mini-btn round" title="Thu gọn / mở rộng" aria-label="Thu gọn">–</button></header>
+    <div id="chat-body">
+      <ul id="chat-asks"></ul>
+      <div id="chat-msgs"></div>
+    </div>
+  </aside>
+
+  <!-- Lịch sử thông báo -->
+  <aside id="notifs" class="panel hidden">
+    <button class="close" data-drawer="notifs" aria-label="Đóng">×</button>
+    <h2>Thông báo</h2>
+    <div class="nf-bar"><button id="nf-readall" class="pill">Đánh dấu đã đọc hết</button><button id="nf-clear" class="pill">Xoá</button></div>
+    <ul id="nf-list"></ul>
+  </aside>
 
   <div id="soundpop" class="card pop hidden">
     <div class="pop-head"><h2>Âm thanh</h2><label class="switch"><input type="checkbox" id="q-on"><i></i><span>Bật</span></label><button class="close" id="soundpop-close" aria-label="Đóng">×</button></div>
