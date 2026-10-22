@@ -8,11 +8,15 @@
 import * as THREE from 'three';
 import { OrbitControls } from './vendor/addons/OrbitControls.js';
 import { CSS2DRenderer, CSS2DObject } from './vendor/addons/CSS2DRenderer.js';
+import * as sound from './sound.js';
+import { initSettings, toggleSettings } from './settings.js';
+import { initCalmRoom, onChat, openRoom, openTask, openFullLog, openModal, closeModal } from './phong-calm.js';
 
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
 const SPR = 'assets/sprites/';
+const UI = 'assets/ui/';
 const MAP_W = 1920, MAP_H = 1080;
 
 // Ô đất trên bản đồ (pixel ảnh). x, y là tâm chân nhà; w là bề ngang nhà khi vẽ.
@@ -253,6 +257,7 @@ async function buildHouse(houseId, roomIds, names) {
   mesh.position.set(wx(plot.x), wy(plot.y) - hh * 0.17, depth(plot.y));
   mesh.renderOrder = Math.round(plot.y * 10);
   mesh.userData.agentId = roomIds[0];
+  mesh.userData.house = houseId;
   mesh.userData.mask = alphaMask(tex);
   sign.position.set(0, hh * 1.02, 0);
   mesh.add(sign);
@@ -298,11 +303,19 @@ function buildPerson(a) {
   bubbleDiv.className = 'bubble3d';
   const bubble = new CSS2DObject(bubbleDiv);
   bubble.position.set(0, H + 34, 0);
-  g.add(nameTag, bubble);
+  const zzzDiv = document.createElement('div');
+  zzzDiv.className = 'zzz';
+  zzzDiv.innerHTML = '<span>z</span><span>z</span><span>Z</span>';
+  const zzz = new CSS2DObject(zzzDiv);
+  zzz.position.set(-W * 0.35, H * 0.62, 0);
+  zzz.visible = false;
+  g.add(nameTag, bubble, zzz);
   scene.add(g);
 
   const p = { group: g, body, shadow, nameTag, bubble, bubbleDiv, data: a, H, W, phase: Math.random() * 6,
-    route: [], pos: null, dir: { x: 0, y: 1 }, walking: false, sprite: null, pose: 'front', flip: false, goal: null };
+    route: [], pos: null, dir: { x: 0, y: 1 }, walking: false, sprite: null, walkSprite: null,
+    want: { pose: 'front', flip: false }, shown: null, turn: null, goal: null,
+    stride: 0, gait: 0, look: null, hop: 0, settle: 0, zzz, sleepSprite: null, sleep: null };
   people[a.id] = p;
   (charTex[cid] ||= loadTex(info.file, true)).then(base => {
     if (!base) return;
@@ -314,17 +327,69 @@ function buildPerson(a) {
     body.add(sprite);
     clickable.push(sprite);
     p.sprite = sprite;
-    setPose(p, p.pose, p.flip, true);
+    showPose(p, p.want);
+  });
+  // Dáng nằm ngủ giữa sân (nếu đã có ảnh)
+  if (info.sleep) (charTex[cid + ':sleep'] ||= loadTex(info.sleep.file, true)).then(base => {
+    if (!base) return;
+    const sw = H * 1.15, sh = sw * base.image.height / base.image.width;
+    const ss = spriteMesh(base, sw, sh);
+    ss.position.y = -sh * 0.25; // chân ảnh (mép tấm chăn) hơi thấp hơn điểm đứng
+    ss.userData.agentId = a.id;
+    ss.userData.mask = alphaMask(base);
+    ss.visible = false;
+    body.add(ss);
+    clickable.push(ss);
+    p.sleepSprite = ss;
+  });
+  // Bảng dáng đi nhiều khung (nếu đã có ảnh): mỗi hàng một hướng, mỗi cột một khung
+  const wk = info.walk;
+  if (wk) (charTex[cid + ':walk'] ||= loadTex(wk.file, true)).then(base => {
+    if (!base) return;
+    const tex = base.clone();
+    tex.repeat.set(1 / wk.cols, 1 / wk.rows.length);
+    const ww = H * (base.image.width / wk.cols) / (base.image.height / wk.rows.length);
+    const ws = spriteMesh(tex, ww, H);
+    ws.userData.agentId = a.id;
+    ws.userData.mask = alphaMask(base);
+    ws.visible = false;
+    body.add(ws);
+    clickable.push(ws);
+    p.walkSprite = ws;
   });
   return p;
 }
 
-function setPose(p, pose, flip, force) {
-  if (!p.sprite || (!force && p.pose === pose && p.flip === flip)) { p.pose = pose; p.flip = flip; return; }
-  p.pose = pose; p.flip = flip;
-  const t = p.sprite.material.map, n = 4, i = POSE[pose];
-  t.repeat.x = flip ? -1 / n : 1 / n;
-  t.offset.x = flip ? (i + 1) / n : i / n;
+// Đổi hướng kiểu game 2D: thay khung hình ngay, không bóp méo hình (bóp trông như tờ giấy).
+// Quay ngược hẳn lại (trái ↔ phải, lên ↔ xuống) thì đi qua một khung ở giữa thật nhanh,
+// như người quay người thật, kèm nhún nhẹ một cái.
+const TURN_MID = 0.075;
+const samePose = (a, b) => a && b && a.pose === b.pose && a.flip === b.flip;
+const faceOf = w => w.pose === 'front' ? 'down' : w.pose === 'back' ? 'up'
+  : w.pose === 'left' ? (w.flip ? 'right' : 'left') : (w.flip ? 'left' : 'right');
+const OPPOSITE = { left: 'right', right: 'left', up: 'down', down: 'up' };
+function setPose(p, pose, flip) { p.want = { pose, flip }; }
+function showPose(p, w) {
+  p.shown = { ...w };
+  if (!p.sprite) return;
+  const t = p.sprite.material.map, n = 4;
+  t.offset.x = POSE[w.pose] / n;
+}
+function animTurn(p, dt) {
+  if (!p.sprite) return;
+  if (p.turn) {
+    p.turn.t += dt;
+    if (p.turn.t < TURN_MID) return;
+    p.turn = null;
+  }
+  if (samePose(p.shown, p.want)) return;
+  const from = p.shown && faceOf(p.shown), to = faceOf(p.want);
+  p.kick = 1;
+  if (from && OPPOSITE[from] === to) {
+    // khung giữa: quay mặt ra phía người xem khi đổi trái/phải, nghiêng khi đổi lên/xuống
+    showPose(p, from === 'left' || from === 'right' ? { pose: 'front', flip: false } : { pose: 'left', flip: to === 'up' });
+    p.turn = { t: 0 };
+  } else showPose(p, p.want);
 }
 
 // Chỗ đứng: trước cửa nhà mình, hoặc cạnh cửa nhà đang tới bàn giao
@@ -358,6 +423,7 @@ function goTo(p, a) {
   if (p.goal && Math.abs(p.goal.x - s.x) < 1 && Math.abs(p.goal.y - s.y) < 1) return;
   const sameHouse = p.goal && p.goal.house && p.goal.house === s.house;
   p.goal = s;
+  if (p.sleep) wakeUp(p);
   p.wander = null; p.speed = SPEED;
   if (sameHouse || Math.hypot(s.x - p.pos.x, s.y - p.pos.y) < 120) { p.route = [s]; return; }
   p.route = [plazaEdge(p.pos), plazaEdge(s), s];
@@ -382,17 +448,84 @@ function apply(s) {
     p.nameTag.element.style.visibility = (a.isBoss || a.isGuest || a.at !== a.home || houseOf(a.id) !== a.id) ? '' : 'hidden';
     p.bubbleDiv.style.display = a.bubble ? '' : 'none';
   }
+  announce(s);
   renderOverview(s);
   renderLog(s.log);
   if (selected) renderDetail(selected);
   $('#btn-demo').classList.toggle('on', !!s.settings.demo);
-  $('#btn-demo').textContent = s.settings.demo ? 'Dừng tự chạy' : 'Tự chạy';
+  $('#btn-demo span').textContent = s.settings.demo ? 'Dừng tự chạy' : 'Tự chạy';
+  $('#btn-demo img').src = UI + (s.settings.demo ? 'icon-no.webp' : 'icon-play.webp');
   const pending = s.approvals.length + s.board.filter(t => t.status === 'waiting_approval').length;
   $('#btn-approve1').disabled = pending === 0;
 }
 
+// ---------- Tiếng báo + thông báo nổi theo sự kiện thật ----------
+// So nhật ký mới với lần trước: mục nào mới thì kêu đúng loại tiếng
+const seenLog = new Set();
+const logKey = e => e.ts + '|' + e.agent + '|' + e.text;
+let firstState = true, lastPending = 0;
+function announce(s) {
+  const fresh = [];
+  for (const e of s.log) if (!seenLog.has(logKey(e))) { seenLog.add(logKey(e)); fresh.push(e); }
+  if (seenLog.size > 2000) { seenLog.clear(); for (const e of s.log) seenLog.add(logKey(e)); }
+  const pending = s.approvals.length + s.board.filter(t => t.status === 'waiting_approval').length;
+  const more = pending > lastPending;
+  lastPending = pending;
+  if (firstState) { firstState = false; return; } // mở trang thì không kêu lại chuyện cũ
+  // Mỗi mục nhật ký mới thuộc một loại; mỗi loại bật/tắt thông báo và tiếng riêng (bảng Cài đặt thông báo).
+  // Nhiều sự kiện cùng lúc thì chỉ kêu tiếng quan trọng nhất.
+  const rank = { notify: 0, ok: 1, handoff: 2, done: 3, error: 4, alert: 5 };
+  let snd = null;
+  const fire = (ev, who, text) => {
+    const c = sound.settings.events[ev];
+    if (c?.toast && text) { toast(ev, who, text); sound.desktopNotify(who, text); }
+    if (c?.sound && (snd === null || rank[ev] > rank[snd])) snd = ev;
+  };
+  for (const e of fresh) {
+    const who = nameOf(e.agent);
+    if (e.kind === 'error') { fire('error', who, e.text); showErr(who, e.text); }
+    else if (e.kind === 'done') fire('done', who, /^Xong /.test(e.text) ? e.text : null);
+    else if (e.kind === 'handoff') fire('handoff', who, e.text);
+    else if (e.kind === 'start') fire('notify', who, e.text);
+    else if (e.kind === 'approval') {
+      if (/^(Xin quyền|Gửi )/.test(e.text)) fire('alert', who, e.text);
+      else if (/duyệt/.test(e.text) && !/từ chối/.test(e.text)) fire('ok', who, e.text);
+    }
+  }
+  if (more && snd !== 'alert' && sound.settings.events.alert.sound) snd = 'alert';
+  if (snd) sound.play(snd);
+}
+const TOAST_ICON = { alert: 'bell', error: 'warn', done: 'ok', ok: 'ok', handoff: 'mail', notify: 'play', info: 'mail', calm: 'mail', choice: 'bell' };
+const TOAST_TITLE = { alert: 'Cần bạn duyệt', error: 'Có lỗi', done: 'Xong việc', ok: 'Đã được duyệt', handoff: 'Bàn giao', notify: 'Việc mới', calm: 'Calm trả lời' };
+function toast(kind, who, text, onClick) {
+  const box = $('#toasts');
+  const el = document.createElement('div');
+  el.className = 'toast ' + kind;
+  const title = TOAST_TITLE[kind] ? `${TOAST_TITLE[kind]} · ${who}` : who;
+  el.innerHTML = `<img class="ic" src="${UI}icon-${TOAST_ICON[kind] || 'mail'}.webp" alt=""><div><b>${esc(title)}</b><div class="tx">${esc(text)}</div></div><span class="x">×</span>`;
+  el.onclick = e => { el.remove(); if (!e.target.classList.contains('x')) onClick?.(); };
+  box.prepend(el);
+  while (box.children.length > 3) box.lastChild.remove();
+  setTimeout(() => { el.classList.add('out'); setTimeout(() => el.remove(), 400); }, kind === 'alert' ? 9000 : 6000);
+}
+// Hộp lỗi: ở lại tới khi bạn bấm; có nút nhờ Calm xem và làm lại
+function showErr(who, text) {
+  const box = $('#errbox');
+  box.innerHTML = `<button class="x" aria-label="Đóng">×</button>
+    <div class="eh"><img src="${UI}icon-warn.webp" alt=""><div><b>${esc(who)} gặp lỗi</b><div class="tx">${esc(text)}</div></div></div>
+    <div class="row"><button class="later">Để sau</button><button class="retry">Nhờ Calm xử lý</button></div>`;
+  box.classList.remove('hidden');
+  box.querySelector('.x').onclick = box.querySelector('.later').onclick = () => box.classList.add('hidden');
+  box.querySelector('.retry').onclick = () => {
+    box.classList.add('hidden');
+    post('/api/chat/send', { text: `Có lỗi trong thị trấn: ${who}: "${text}". Bạn xem nguyên nhân rồi làm lại giúp mình, xong báo mình kết quả.` });
+    openRoom();
+  };
+}
+
 const nameOf = id => state?.agents.find(a => a.id === id)?.name || id;
-const statusText = { running: 'Đang chạy', queued: 'Sắp làm', waiting_approval: 'Chờ duyệt', approved: 'Đã duyệt', rejected: 'Bị trả lại', done: 'Xong', error: 'Lỗi' };
+const colorOf = id => state?.agents.find(a => a.id === id)?.color || '#c9b79c';
+const statusText = { running: 'Đang chạy', queued: 'Sắp làm', waiting_approval: 'Chờ duyệt', approved: 'Đã duyệt', rejected: 'Bị trả lại', done: 'Xong', error: 'Lỗi', answered: 'Đã trả lời' };
 const hhmm = ts => new Date(ts).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
 
 function renderOverview(s) {
@@ -404,18 +537,20 @@ function renderOverview(s) {
 
   const items = [
     ...s.approvals.map(q => ({ id: q.id, title: q.summary, who: q.agent, kind: 'Xin quyền dùng ' + q.tool, ts: q.ts })),
-    ...s.board.filter(t => t.status === 'waiting_approval').map(t => ({ id: t.id, title: `${t.id}: ${t.title}`, who: t.agent, kind: 'Việc chờ duyệt', ts: t.updatedAt })),
+    ...s.board.filter(t => t.status === 'waiting_approval').map(t => ({ id: t.id, task: true, title: t.title, who: t.agent, kind: 'Cần bạn duyệt', ts: t.updatedAt })),
   ];
   $('#approvals').innerHTML = items.length ? items.map(i => `
-    <li><div>${esc(i.title)}</div>
+    <li><div class="${i.task ? 'link' : ''}"${i.task ? ` data-task="${esc(i.id)}"` : ''}>
+        <div class="ap-id">${esc(i.task ? i.id : 'Xin quyền')}</div><div class="ap-title">${esc(i.title)}</div></div>
       <div class="meta">${esc(nameOf(i.who))} · ${esc(i.kind)} · ${hhmm(i.ts)}</div>
-      <div class="row"><button class="ok" data-decide="${esc(i.id)}" data-ok="1">Duyệt</button>
-      <button class="no" data-decide="${esc(i.id)}" data-ok="0">Từ chối</button></div></li>`).join('')
+      <div class="row"><button class="btn-ok" data-decide="${esc(i.id)}" data-ok="1">Duyệt</button>
+      <button class="btn-no" data-decide="${esc(i.id)}" data-ok="0">Từ chối</button></div></li>`).join('')
     : '<li class="empty">Không có gì chờ duyệt.</li>';
 
   const list = [...s.board].reverse().slice(0, 30);
+  $('#board-count').textContent = list.length ? `${list.length} việc gần đây` : '';
   $('#board').innerHTML = list.length ? list.map(t => `
-    <li><span class="tid">${esc(t.id)}</span><span class="ttl" title="${esc(t.title)}">${esc(t.title)}</span>
+    <li class="link" data-task="${esc(t.id)}"><span class="tid">${esc(t.id)}</span><span class="ttl" title="${esc(t.title)}">${esc(t.title)}</span>
       <span class="tag ${t.status}">${statusText[t.status] || t.status}</span></li>`).join('')
     : '<li class="empty">Chưa có việc nào.</li>';
 }
@@ -425,7 +560,8 @@ function renderLog(log) {
   for (const e of [...log].reverse().slice(0, 120)) {
     const d = new Date(e.ts).toLocaleDateString('vi-VN', { weekday: 'long', day: '2-digit', month: '2-digit' });
     if (d !== day) { html += `<div class="day">${esc(d)}</div>`; day = d; }
-    html += `<div class="e ${esc(e.kind)}"><time>${hhmm(e.ts)}</time><span class="who">${esc(nameOf(e.agent))}</span><span class="txt">${esc(e.text)}</span></div>`;
+    const tid = (e.text.match(/\b[A-Z]{2,5}-\d{3,}\b/) || [])[0];
+    html += `<div class="e ${esc(e.kind)}${tid ? ' link' : ''}"${tid ? ` data-task="${tid}"` : ''}><i class="d" style="background:${esc(colorOf(e.agent))}"></i><time>${hhmm(e.ts)}</time><span class="who">${esc(nameOf(e.agent))}</span><span class="txt">${esc(e.text)}</span></div>`;
   }
   $('#logbody').innerHTML = html || '<div class="empty">Chưa có nhật ký.</div>';
 }
@@ -434,21 +570,62 @@ const stateText = { idle: 'Rảnh', working: 'Đang làm', waiting: 'Chờ bạn
 function renderDetail(id) {
   const a = state?.agents.find(x => x.id === id);
   if (!a) return;
-  const tasks = state.board.filter(t => t.agent === id).slice(-5).reverse();
+  const tasks = state.board.filter(t => t.agent === id).slice(-4).reverse();
+  const cur = a.task && state.board.find(t => t.id === a.task);
+  const face = meta?.chars[charFor(a)]?.face;
+  const busy = a.state === 'working' || cur?.status === 'running';
   $('#detailbody').innerHTML = `
-    <div class="head"><div class="swatch" style="background:${esc(a.color)}"></div>
-      <div><div class="name">${esc(a.name)}</div><div class="role">${esc(a.role)}</div></div></div>
-    <h3>Đang làm</h3>
-    <div class="now"><b>${stateText[a.state] || a.state}</b>${a.task ? ' · ' + esc(a.task) : ''}<br>${esc(a.bubble)}</div>
-    <h3>Việc gần đây</h3>
-    ${tasks.length ? '<ul>' + tasks.map(t => `<li>${esc(t.id)}: ${esc(t.title)} <span class="tag ${t.status}">${statusText[t.status] || t.status}</span></li>`).join('') + '</ul>' : '<div class="empty">Chưa có.</div>'}
-    <h3>Thao tác vừa rồi</h3>
-    ${a.tools.length ? '<ul>' + a.tools.slice(0, 6).map(t => `<li>${hhmm(t.ts)} ${esc(t.text)}</li>`).join('') + '</ul>' : '<div class="empty">Chưa có.</div>'}
-    <h3>File dùng</h3>
-    <div class="chips">${a.files.map(f => `<span class="chip">${esc(f)}</span>`).join('') || '<span class="empty">Chưa có.</span>'}</div>
-    <h3>Kỹ năng</h3>
-    <div class="chips">${a.skills.map(f => `<span class="chip">${esc(f)}</span>`).join('') || '<span class="empty">Chưa có.</span>'}</div>`;
+    <div class="ag-head">
+      <div class="ag-face">${face ? `<img src="${SPR + face}" alt="">` : ''}</div>
+      <div>
+        <div class="ag-name">${esc(a.name)}</div>
+        <div class="ag-role">${esc(a.role)}</div>
+        <span class="st-pill ${esc(a.state)}">${stateText[a.state] || a.state}</span>
+        <div class="ag-task" style="margin-top:8px">${cur ? `<span class="tid link" data-task="${esc(cur.id)}">${esc(cur.id)}</span> · ${esc(cur.title)}` : esc(a.bubble || 'Chưa có việc')}</div>
+        ${cur ? `<div class="progress"><div class="bar${busy ? ' busy' : ''}"><i style="${busy ? '' : `width:${cur.status === 'done' || cur.status === 'approved' ? 100 : 60}%`}"></i></div><b>${busy ? 'Đang làm' : statusText[cur.status] || ''}</b></div>` : ''}
+      </div>
+    </div>
+    <div class="ag-sec"><h4>Việc gần đây</h4>
+      ${tasks.length ? '<ul>' + tasks.map(t => `<li class="link" data-task="${esc(t.id)}"><span class="ck">${t.status === 'done' || t.status === 'approved' ? '✔' : '•'}</span><b>${esc(t.id)}</b><span class="tt">${esc(t.title)}</span><span class="tag ${t.status}">${statusText[t.status] || t.status}</span></li>`).join('') + '</ul>' : '<div class="empty">Chưa có.</div>'}
+    </div>
+    ${routinesHtml(a)}
+    <div class="ag-sec"><h4>Giao việc</h4><div class="empty">${picked === a.id ? 'Đã chọn. Bấm vào một ngôi nhà để giao việc thật.' : 'Bấm nhân vật để chọn, rồi bấm một nhà để đi giao việc.'}</div></div>
+    <div class="ag-sec"><details><summary>Thao tác vừa rồi, tệp và kỹ năng</summary>
+      ${a.tools.length ? '<ul style="margin-top:6px">' + a.tools.slice(0, 8).map(t => `<li><time>${hhmm(t.ts)}</time> ${esc(t.text)}</li>`).join('') + '</ul>' : '<div class="empty">Chưa có thao tác.</div>'}
+      <div class="chips">${[...a.files, ...a.skills].map(f => `<span class="chip">${esc(f)}</span>`).join('')}</div>
+    </details></div>`;
 }
+// Lịch định kỳ của nhân vật (town.config.json → routines)
+function routinesHtml(a) {
+  const rs = (state.routines || []).filter(r => (r.agent || state.boss) === a.id || r.house === a.id);
+  if (!rs.length) return '';
+  return `<div class="ag-sec routine"><h4>Lịch định kỳ</h4><ul>${rs.map(r => `<li><time>${esc(r.when || '')}</time><span class="tt">${esc(r.title || '/' + r.skill)}${(r.agent || state.boss) !== a.id ? ` <i>(${esc(nameOf(r.agent || state.boss))} sang)</i>` : ''}</span></li>`).join('')}</ul></div>`;
+}
+
+// ---------- Chọn nhân vật rồi bấm nhà để giao việc thật ----------
+let picked = null, pendingSend = null;
+function setPicked(id) {
+  if (picked && people[picked]) people[picked].nameTag.element.classList.remove('picked');
+  picked = id;
+  if (id && people[id]) people[id].nameTag.element.classList.add('picked');
+}
+function askSend(agentId, houseAgent) {
+  const who = state.agents.find(x => x.id === agentId), where = state.agents.find(x => x.id === houseAgent);
+  const plan = state.dispatch?.plans?.[houseAgent] || {};
+  pendingSend = { agent: agentId, house: houseAgent };
+  $('#send-body').innerHTML = `<p><b>${esc(who?.name)}</b> sẽ đi sang <b>${esc(where?.name)}</b> và chạy Claude Code thật (<code>claude -p</code>) trong thư mục đội Calm${state.calm?.dir ? ` (<code>${esc(state.calm.dir)}</code>)` : ''}.</p>
+    <p><b>${esc(plan.title || 'Việc mới')}</b></p><pre>${esc(plan.prompt || '')}</pre>`;
+  openModal('send-wrap');
+}
+$('#send-ok').onclick = async () => {
+  closeModal('send-wrap');
+  if (!pendingSend) return;
+  const r = await post('/api/dispatch', { ...pendingSend, confirm: true });
+  if (r.ok) toast('handoff', nameOf(pendingSend.agent), `Đã giao ${r.task}`, () => openTask(r.task));
+  else showErr(nameOf(pendingSend.agent), r.error || 'Không giao được việc');
+  pendingSend = null; setPicked(null);
+};
+
 function openDetail(id) {
   selected = id;
   $('#detail').classList.remove('hidden');
@@ -468,20 +645,57 @@ document.addEventListener('click', e => {
 
 let drift = false;
 const toggles = {
-  rotate: b => { drift = !drift; b.classList.toggle('on', drift); b.textContent = drift ? 'Dừng lướt' : 'Lướt'; },
+  rotate: b => { drift = !drift; b.classList.toggle('on', drift); b.querySelector('span').textContent = drift ? 'Dừng lướt' : 'Lướt'; },
   names: b => { b.classList.toggle('on', !document.body.classList.toggle('hide-names')); },
   bubbles: b => { b.classList.toggle('on', !document.body.classList.toggle('hide-bubbles')); },
   home: () => { camera.position.set(0, 0, 200); camera.zoom = 1; camera.updateProjectionMatrix(); controls.target.set(0, 0, 0); },
   overview: b => b.classList.toggle('on', !$('#overview').classList.toggle('hidden')),
   log: b => b.classList.toggle('on', !$('#log').classList.toggle('hidden')),
   demo: () => post('/api/demo', { on: !state?.settings.demo }),
+  sound: b => {
+    const pop = $('#soundpop'), open = pop.classList.toggle('hidden') === false;
+    b.classList.toggle('on', open);
+    // đặt thẻ ngay dưới nút Âm thanh, mũi nhọn chỉ vào nút
+    const r = b.getBoundingClientRect(), base = $('#leftcol').getBoundingClientRect();
+    const left = Math.max(0, Math.min(r.left + r.width / 2 - base.left - 165, base.width - 330));
+    pop.style.left = left + 'px';
+    pop.style.setProperty('--arrow', (r.left + r.width / 2 - base.left - left - 8) + 'px');
+  },
+  calm: () => openRoom(),
   approve1: () => {
     if (!state) return;
     const first = state.approvals[0]?.id || state.board.find(t => t.status === 'waiting_approval')?.id;
     if (first) post('/api/decide', { id: first, approve: true });
   },
 };
-document.querySelectorAll('[data-act]').forEach(b => b.addEventListener('click', () => toggles[b.dataset.act](b)));
+document.querySelectorAll('[data-act]').forEach(b => b.addEventListener('click', () => { sound.play('click'); toggles[b.dataset.act](b); }));
+
+// Bảng cài đặt thông báo; icon loa trên thanh công cụ đổi theo tắt/mở tiếng
+initSettings();
+initCalmRoom({
+  getState: () => state, nameOf, toast,
+  onUnread: n => { $('#calm-badge').textContent = n; $('#calm-badge').classList.toggle('hidden', !n); },
+});
+$('#log-full').onclick = () => openFullLog();
+// Thẻ âm thanh nhanh dưới lưới nút
+const fill = el => el.style.setProperty('--v', el.value + '%');
+const syncSoundIcon = () => {
+  const st = sound.settings;
+  $('#btn-sound img').src = UI + (st.muted ? 'icon-mute.webp' : 'icon-sound.webp');
+  $('#q-on').checked = !st.muted;
+  $('#q-music').value = Math.round(st.music * 100); $('#q-music-v').textContent = $('#q-music').value + '%'; fill($('#q-music'));
+  $('#q-sfx').value = Math.round(st.sfx * 100); $('#q-sfx-v').textContent = $('#q-sfx').value + '%'; fill($('#q-sfx'));
+};
+// Thanh trượt: phần đã kéo tô màu xanh
+document.addEventListener('input', e => { if (e.target.type === 'range') fill(e.target); });
+$('#q-on').onchange = e => sound.set('muted', !e.target.checked);
+$('#q-music').oninput = e => { sound.set('music', e.target.value / 100); if (!sound.settings.musicOn) sound.set('musicOn', true); };
+$('#q-sfx').oninput = e => sound.set('sfx', e.target.value / 100);
+$('#q-music-try').onclick = () => { if (!sound.settings.musicOn) sound.set('musicOn', true); sound.playVoice('dan'); };
+$('#q-sfx-try').onclick = () => sound.playVoice(sound.settings.events.alert.voice);
+$('#q-more').onclick = () => { $('#soundpop').classList.add('hidden'); $('#btn-sound').classList.remove('on'); toggleSettings(true); };
+sound.onChange(syncSoundIcon);
+syncSoundIcon();
 if (innerWidth < 760) {
   for (const k of ['overview', 'log']) { $('#' + k).classList.add('hidden'); document.querySelector(`[data-act=${k}]`).classList.remove('on'); }
 }
@@ -492,7 +706,7 @@ const ptr = new THREE.Vector2();
 function pick(e) {
   ptr.set((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
   ray.setFromCamera(ptr, camera);
-  const hits = ray.intersectObjects(clickable, false).filter(hitOpaque);
+  const hits = ray.intersectObjects(clickable, false).filter(h => h.object.visible && hitOpaque(h));
   // trên cùng là cái vẽ sau cùng (gần camera hơn)
   hits.sort((a, b) => b.object.renderOrder - a.object.renderOrder);
   return hits[0];
@@ -502,7 +716,14 @@ renderer.domElement.addEventListener('pointerdown', e => { downAt = [e.clientX, 
 renderer.domElement.addEventListener('pointerup', e => {
   if (!downAt || Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]) > 6) return;
   const hit = pick(e);
-  if (hit) openDetail(hit.object.userData.agentId);
+  if (!hit) return setPicked(null);
+  const id = hit.object.userData.agentId;
+  if (hit.object.userData.house) {
+    if (picked) return askSend(picked, id);
+    return openDetail(id);
+  }
+  setPicked(picked === id ? null : id);
+  openDetail(id);
 });
 let hoverAt = 0;
 renderer.domElement.addEventListener('pointermove', e => {
@@ -516,37 +737,36 @@ function connect() {
   const es = new EventSource('/events');
   es.onopen = () => $('#conn').classList.remove('off');
   es.onmessage = e => apply(JSON.parse(e.data));
+  es.addEventListener('chat', e => onChat(JSON.parse(e.data)));
   es.onerror = () => { $('#conn').classList.add('off'); $('#subtitle').textContent = 'Mất kết nối server, đang thử lại…'; };
 }
-window.__town = { openDetail, people, houses };
+window.__town = { openDetail, people, houses, toast };
 
 // ---------- Vòng vẽ ----------
 const clock = new THREE.Clock();
 const SPEED = 150; // pixel bản đồ mỗi giây
 const STROLL = 60;  // đi dạo thì chậm hơn
+const STEP_LEN = 22; // mỗi bước dài bao nhiêu pixel bản đồ
 
-// Lúc rảnh thì đi dạo: quanh nhà mình, ra quảng trường, thỉnh thoảng ghé nhà bạn
+// Lúc rảnh: đứng chơi một lúc trước cửa, rồi ra giữa sân nằm ngủ. Có việc thì dậy, chạy về làm.
 const canWander = a => (a.state === 'idle' || a.state === 'done') && a.at === a.home;
 const rnd = (a, b) => a + Math.random() * (b - a);
-function planWander(p, t) {
-  const home = p.goal;
-  const others = Object.entries(houses).filter(([id]) => id !== home.house);
-  const r = Math.random();
-  let dest, route;
-  if (r < 0.5) {
-    dest = { x: home.x + rnd(-70, 70), y: home.y + rnd(-10, 30) };
-    route = [dest];
-  } else if (r < 0.85 || !others.length) {
-    const ang = rnd(0, Math.PI * 2), k = Math.sqrt(Math.random()) * 0.85;
-    dest = { x: PLAZA.x + Math.cos(ang) * PLAZA.rx * k, y: PLAZA.y + Math.sin(ang) * PLAZA.ry * k };
-    route = [plazaEdge(p.pos), dest];
-  } else {
-    const h = others[Math.floor(Math.random() * others.length)][1];
-    dest = { x: h.door.x + rnd(-40, 40), y: h.door.y + rnd(0, 20) };
-    route = [plazaEdge(p.pos), plazaEdge(dest), dest];
-  }
-  p.wander = { until: t + rnd(4, 9) + Math.hypot(dest.x - p.pos.x, dest.y - p.pos.y) / STROLL * 1.5 };
-  p.route = route; p.speed = STROLL;
+// Chỗ nằm trên quảng trường (lệch so với tâm), mỗi người một chỗ cố định
+const BEDS = [[-95, -38], [10, -46], [110, -34], [-135, 4], [-40, 2], [60, 6], [150, 10], [-90, 44], [15, 50], [115, 46]];
+function bedFor(p) {
+  const i = Object.keys(people).indexOf(p.data.id) % BEDS.length;
+  return { x: PLAZA.x + BEDS[i][0], y: PLAZA.y + BEDS[i][1] };
+}
+function goSleep(p, t) {
+  const bed = bedFor(p);
+  p.route = Math.hypot(bed.x - p.pos.x, bed.y - p.pos.y) < 120 ? [bed] : [plazaEdge(p.pos), bed];
+  p.speed = STROLL;
+  p.wander = { phase: 'going' };
+}
+function wakeUp(p) {
+  p.sleep = null;
+  p.kick = 1.6; // bật dậy
+  p.stopAt = clock.elapsedTime;
 }
 function goHome(p, speed) {
   const s = p.goal;
@@ -558,13 +778,15 @@ function stepPerson(p, dt, t) {
   if (!p.pos) return;
   const st = p.data.state;
   if (p.goal) {
-    // Có việc thì đi nhanh về chỗ; rảnh thì nghỉ một lúc rồi đi dạo tiếp
-    if (!canWander(p.data)) { if (p.wander) { p.wander = null; goHome(p, SPEED); } }
-    else if (!p.wander) p.wander = { until: t + rnd(2, 8) };
-    else if (!p.route.length && t > p.wander.until) {
-      if (Math.random() < 0.3) { goHome(p, STROLL); p.wander.until = t + rnd(8, 16); }
-      else planWander(p, t);
-    }
+    const w = p.wander;
+    if (!canWander(p.data)) {
+      // Có việc: đang ngủ thì dậy, vươn vai một chút rồi đi nhanh về chỗ
+      if (p.sleep) { wakeUp(p); p.wander = { phase: 'waking', until: t + 0.7 }; p.route = []; }
+      else if (w && (w.phase !== 'waking' || t > w.until)) { p.wander = null; goHome(p, SPEED); }
+    } else if (!w) p.wander = { phase: 'idle', until: t + rnd(5, 12) };
+    else if (w.phase === 'idle' && t > w.until && !p.route.length) goSleep(p, t);
+    else if (w.phase === 'going' && !p.route.length && !p.walking) { p.sleep = { since: t }; w.phase = 'sleeping'; }
+    else if (w.phase === 'waking' && t > w.until) { p.wander = null; goHome(p, SPEED); }
   }
   // Vận tốc đổi dần (tăng tốc, giảm tốc, ôm cua) thay vì giật theo đường thẳng
   const v = p.vel ||= { x: 0, y: 0 };
@@ -585,34 +807,106 @@ function stepPerson(p, dt, t) {
   p.pos.x += v.x * dt; p.pos.y += v.y * dt;
   const sp = Math.hypot(v.x, v.y);
   const moving = sp > 6;
+  if (p.walking && !moving) p.stopAt = t; // vừa dừng: nhún nhẹ một cái
   p.walking = moving;
-  const b = p.body;
+  // gait: 0 là đứng, 1 là đi đều. Đổi mượt nên bước chân không bật/tắt đột ngột
+  p.gait += ((moving ? Math.min(1, sp / 90) : 0) - p.gait) * (1 - Math.exp(-dt * 8));
+  const g = p.gait;
+  let vertical = false;
   if (moving) {
     p.dir.x = v.x / sp; p.dir.y = v.y / sp;
-    // Nhịp bước theo tốc độ; hướng chỉ đổi khi lệch rõ để không chớp hình
-    p.stride = (p.stride || 0) + dt * (1.6 + sp / 40);
+    p.stride += sp * dt / STEP_LEN; // đếm số bước theo quãng đường, chân không trượt
+    // Hướng chỉ đổi khi lệch rõ để không lắc qua lắc lại
     const ax = Math.abs(p.dir.x), ay = Math.abs(p.dir.y) * 1.6;
-    const vertical = p.facing === 'v' ? ay > ax * 0.7 : ay > ax * 1.4;
+    vertical = p.facing === 'v' ? ay > ax * 0.7 : ay > ax * 1.4;
     p.facing = vertical ? 'v' : 'h';
-    const step = Math.floor(p.stride * 2) % 2;
+    p.look = null;
     if (vertical) setPose(p, p.dir.y < 0 ? 'back' : 'front', false);
-    else setPose(p, step ? 'walk' : 'left', p.dir.x > 0 ? !step : !!step);
-    const ph = p.stride * Math.PI * 2;
-    b.position.y = Math.abs(Math.sin(ph)) * 3;
-    b.rotation.z = Math.sin(ph) * (vertical ? 0.06 : 0.03);
-    b.scale.set(1, 1 - Math.abs(Math.sin(ph)) * 0.02, 1);
+    else setPose(p, 'walk', p.dir.x < 0);
   } else {
     p.facing = null;
-    setPose(p, 'front', false);
-    b.position.y = st === 'working' ? Math.abs(Math.sin(t * 7 + p.phase)) * 3
-      : st === 'waiting' ? Math.abs(Math.sin(t * 3.2)) * 10 : 0;
-    b.rotation.z *= 1 - k;
-    const breathe = 1 + Math.sin(t * 2 + p.phase) * 0.012;
-    b.scale.set(1 / breathe, breathe, 1);
+    // Rảnh thì thỉnh thoảng quay sang ngó nghiêng
+    if (st === 'idle' || st === 'done') {
+      if (!p.look || t > p.look.until) {
+        const side = Math.random() < 0.4;
+        p.look = { pose: side ? 'left' : 'front', flip: side && Math.random() < 0.5, until: t + rnd(side ? 2 : 4, side ? 4 : 9) };
+      }
+    } else p.look = null;
+    setPose(p, p.look?.pose || 'front', !!p.look?.flip);
   }
+  animTurn(p, dt);
+  p.kick = (p.kick || 0) * Math.exp(-dt * 14);
+
+  // Bước đi giả bằng chuyển động: nhấp nhô, bẹp lúc chạm đất, vươn lúc nhấc chân,
+  // lắc nhẹ hai bên và ngả người theo hướng đi
+  // Hàng khung vẽ thật theo hướng đang quay mặt (thiếu hàng sang phải thì lật hàng sang trái)
+  const flip = !!p.shown?.flip;
+  let walkRow = null, walkFlip = false;
+  const wk = p.walkSprite && meta.chars[charFor(p.data)].walk;
+  if (wk && g > 0.15) {
+    const pose = p.shown?.pose;
+    walkRow = pose === 'back' ? 'up' : pose === 'walk' ? (flip ? 'left' : 'right') : 'down';
+    if (walkRow === 'right' && !wk.rows.includes('right')) { walkRow = 'left'; walkFlip = true; }
+    if (!wk.rows.includes(walkRow)) walkRow = null; // hướng này chưa vẽ thì dùng dáng đứng + nhún giả
+  }
+  const walkSheet = !!walkRow;
+  const amp = walkSheet ? 0.35 : 1; // có khung vẽ thật thì bớt nhún giả
+  const ph = p.stride * Math.PI;    // mỗi bước là nửa vòng
+  const s = Math.abs(Math.sin(ph)); // 0 lúc chạm đất, 1 giữa bước
+  let bob = s * 5 * g * amp;
+  let sq = (s - 0.55) * 0.08 * g * amp; // dương là vươn cao, âm là bẹp xuống
+  let rot = Math.sin(ph) * 0.03 * g * amp * (p.facing === 'v' ? 1.5 : 0.7) - p.dir.x * 0.075 * g;
+  if (st === 'working' && !moving) { // gõ phím: nhún nhanh, nhỏ
+    const w = Math.abs(Math.sin(t * 7 + p.phase));
+    bob += w * 2; sq += (w - 0.5) * 0.025;
+  }
+  if (st === 'waiting' && !moving) { // chờ duyệt: nhảy lên gọi bạn, có lấy đà và tiếp đất
+    const h = (t * 0.85 + p.phase) % 1;
+    if (h < 0.38) { const k = Math.sin(Math.PI * h / 0.38); bob += k * 12; sq += k * 0.06; }
+    else if (h < 0.6) sq -= 0.07 * Math.exp(-(h - 0.38) * 25);
+    else if (h > 0.88) sq -= 0.05 * Math.sin(Math.PI * (h - 0.88) / 0.12);
+  }
+  sq += Math.sin(t * 2 + p.phase) * 0.012 * (1 - g); // thở
+  sq -= (p.kick || 0) * 0.035; bob += (p.kick || 0) * 1.5; // nhún nhẹ khi đổi hướng
+  if (p.stopAt) { const ts = t - p.stopAt; if (ts < 0.6) sq -= 0.05 * Math.exp(-ts * 8) * Math.cos(ts * 20); }
+
+  const b = p.body;
+  const sy = 1 + sq;
+  b.position.y = bob;
+  b.rotation.z += (rot - b.rotation.z) * (1 - Math.exp(-dt * 14));
+  b.scale.set(1 - sq * 0.8, sy, 1);
+  if (p.sprite) { p.sprite.scale.x = flip ? -1 : 1; p.sprite.visible = !walkSheet; }
+  if (p.walkSprite) {
+    const ws = p.walkSprite;
+    ws.visible = walkSheet;
+    if (walkSheet) {
+      const r = wk.rows.indexOf(walkRow), n = wk.rows.length;
+      const f = Math.floor(p.stride / 2 * wk.cols) % wk.cols; // một vòng = 2 bước
+      ws.material.map.offset.set(f / wk.cols, 1 - (r + 1) / n);
+      ws.scale.x = walkFlip ? -1 : 1;
+    }
+  }
+  const asleep = !!p.sleep;
+  const lying = asleep && !!p.sleepSprite;
+  if (p.sleepSprite) p.sleepSprite.visible = lying;
+  if (lying) {
+    if (p.sprite) p.sprite.visible = false;
+    if (p.walkSprite) p.walkSprite.visible = false;
+    const br = Math.sin(t * 1.7 + p.phase) * 0.018; // thở chậm, ngực phồng xẹp
+    b.position.y = 0; b.rotation.z = 0;
+    b.scale.set(1 - br * 0.5, 1 + br, 1);
+  }
+  p.zzz.visible = asleep;
+  p.zzz.position.y = lying ? p.H * 0.62 : p.H + 10;
+  p.bubbleDiv.style.visibility = asleep ? 'hidden' : '';
+  p.nameTag.position.y = lying ? p.H * 0.75 : p.H + 8;
+  const lift = 1 - Math.min(0.35, bob / 40); // nhảy lên thì bóng nhỏ lại
+  p.shadow.scale.set(p.W * (lying ? 1.5 : 0.7) * lift, p.H * (lying ? 0.3 : 0.16) * lift, 1);
   p.group.position.set(wx(p.pos.x), wy(p.pos.y), depth(p.pos.y) + 0.01);
   const ro = Math.round(p.pos.y * 10) + 1;
   if (p.sprite) p.sprite.renderOrder = ro;
+  if (p.walkSprite) p.walkSprite.renderOrder = ro;
+  if (p.sleepSprite) p.sleepSprite.renderOrder = ro;
   p.shadow.renderOrder = ro - 1;
 }
 

@@ -8,6 +8,8 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const { runDemo } = require('./demo');
+const { createCalm } = require('./calm');
+const { createDispatch, routineFor } = require('./dispatch');
 
 const ROOT = __dirname;
 const config = JSON.parse(fs.readFileSync(path.join(ROOT, 'town.config.json'), 'utf8'));
@@ -35,7 +37,21 @@ for (const a of config.agents) agents[a.id] = makeAgent(a);
 const boardFile = path.join(DATA, 'board.json');
 let board = [];
 try { board = JSON.parse(fs.readFileSync(boardFile, 'utf8')); } catch {}
-let taskSeq = board.reduce((m, t) => Math.max(m, Number(String(t.id).split('-').pop()) || 0), 0);
+// Mã việc: ưu tiên mã của Calm (HLP-010) hoặc mã Linear (HP-152) có trong tiêu đề / lời giao việc,
+// để bảng thị trấn khớp sổ BOARD.md của Calm. Không có mã thì tự đánh số riêng TT-001 (không trùng dải mã của Calm).
+const CALM_PREFIX = config.taskPrefix || 'HY';
+const AUTO_PREFIX = config.boardPrefix || 'TT';
+const autoRe = new RegExp(`^${AUTO_PREFIX}-(\\d+)$`);
+let taskSeq = board.reduce((m, t) => { const x = String(t.id).match(autoRe); return x ? Math.max(m, Number(x[1])) : m; }, 0);
+function findCode(...texts) {
+  const s = texts.filter(Boolean).join('\n');
+  const own = s.match(new RegExp(`\\b${CALM_PREFIX}-\\d+\\b`));
+  if (own) return own[0];
+  const lp = (config.linearPrefixes || []).join('|');
+  const lin = s.match(lp ? new RegExp(`\\b(?:${lp})-\\d+\\b`) : /\b[A-Z][A-Z0-9]{1,5}-\d+\b/);
+  if (lin && lin[0].startsWith(AUTO_PREFIX + '-')) return null;
+  return lin ? lin[0] : null;
+}
 
 const approvals = [];       // yêu cầu xin quyền đang chờ (PermissionRequest)
 const log = [];
@@ -59,10 +75,12 @@ function writeStatus() {
   fs.writeFile(path.join(DATA, 'status.json'), JSON.stringify(snapshot(), null, 2), () => {});
 }
 
-function newTask(title, agentId, status = 'queued') {
-  taskSeq += 1;
+function newTask(title, agentId, status = 'queued', hint = '') {
+  let id = findCode(title, hint);
+  if (id && board.some(x => x.id === id)) { let n = 2; while (board.some(x => x.id === `${id}-${n}`)) n++; id = `${id}-${n}`; }
+  if (!id) { taskSeq += 1; id = `${AUTO_PREFIX}-${String(taskSeq).padStart(3, '0')}`; }
   const t = {
-    id: `${config.taskPrefix || 'HY'}-${String(taskSeq).padStart(3, '0')}`,
+    id,
     title, agent: agentId, status, note: '', createdAt: now(), updatedAt: now(),
   };
   board.push(t);
@@ -97,14 +115,24 @@ function ensureAgent(id) {
 
 // ---------- Gửi trạng thái lên trang web ----------
 const clients = new Set();
+// Tin mới trong phòng Calm đẩy riêng (sự kiện "chat") để không gửi lại cả lịch sử
+const calm = createCalm({ DATA, config, onChange: ev => {
+  const data = `event: chat\ndata: ${JSON.stringify(ev)}\n\n`;
+  for (const res of clients) res.write(data);
+  if (ev.type === 'status') push();
+} });
+const dispatch = createDispatch({ config, calmDir: () => calm.status().dir, newTask, setTask, setAgent, addLog, push: () => push(), agents });
+let routineRun = null; // { routine, session } lượt theo lịch đang chạy
 function snapshot() {
   return {
     title: config.title, subtitle: config.subtitle, boss: config.boss.id,
     rooms: [config.boss.id, ...config.agents.map(a => a.id)],
     agents: Object.values(agents),
-    board: board.slice(-80),
+    board: board.slice(-80).map(({ brief, result, steps, ...t }) => ({ ...t, detail: !!(brief || result || steps) })),
+    calm: calm.status(),
     approvals: approvals.map(({ resolve, timer, ...rest }) => rest),
     log: log.slice(-150), settings,
+    routines: config.routines || [], dispatch: { plans: dispatch.plans(), busy: dispatch.busy() },
   };
 }
 let pushTimer = null;
@@ -122,6 +150,7 @@ function push() {
 const recentStops = {};     // agentId -> thời điểm vừa xong (để vẽ cảnh bàn giao)
 const runningByAgent = {};  // agentId -> task đang chạy
 
+const clip = (v, n) => { const t = String(v ?? ''); return t.length > n ? t.slice(0, n) + '\n…(còn nữa)' : t; };
 function shortPath(p) { return p ? String(p).replace(/\\/g, '/').split('/').slice(-2).join('/') : ''; }
 function toolBubble(name, input = {}) {
   switch (name) {
@@ -164,6 +193,15 @@ function handleHook(ev) {
     case 'UserPromptSubmit': {
       // Thông báo nội bộ khi subagent chạy nền xong, không phải yêu cầu của người dùng
       if (/^\s*<task-notification/.test(ev.prompt || '')) break;
+      const r = routineFor(config, ev.prompt);
+      if (r) {
+        // Lượt chạy theo lịch: Calm đi bộ sang nhà phụ trách
+        routineRun = { routine: r, session: ev.session_id };
+        const house = agents[r.house] ? r.house : boss;
+        setAgent(boss, { state: 'working', at: house, bubble: `Lịch: ${r.title || '/' + r.skill}` });
+        addLog(boss, `Bắt đầu lịch định kỳ ${r.title || '/' + r.skill}`, 'notify');
+        break;
+      }
       const p = String(ev.prompt || '').replace(/\s+/g, ' ').slice(0, 80);
       setAgent(boss, { state: 'working', bubble: `Nhận yêu cầu: ${p}` });
       addLog(boss, `Nhận yêu cầu: ${p}`);
@@ -177,7 +215,8 @@ function handleHook(ev) {
         // Sếp giao việc cho một phòng
         const target = ensureAgent(input.subagent_type || 'general-purpose');
         const title = input.description || String(input.prompt || '').slice(0, 60) || 'Việc mới';
-        const t = newTask(title, target, 'running');
+        const t = newTask(title, target, 'running', input.prompt);
+        t.brief = clip(input.prompt, 12000);
         runningByAgent[target] = t;
         setAgent(target, { task: t.id });
         setAgent(boss, { state: 'working', bubble: `Giao ${t.id} cho ${agents[target].name}` });
@@ -185,6 +224,11 @@ function handleHook(ev) {
         break;
       }
       a.tools.unshift({ ts: now(), text: toolBubble(ev.tool_name, input) });
+      const rt = runningByAgent[id];
+      if (rt && ev.agent_type) {
+        (rt.steps ||= []).push({ ts: now(), text: toolBubble(ev.tool_name, input) });
+        if (rt.steps.length > 300) rt.steps.shift();
+      }
       a.tools.length = Math.min(a.tools.length, 10);
       trackFile(a, input, ev.cwd);
       setAgent(id, { state: 'working', bubble: toolBubble(ev.tool_name, input) });
@@ -227,7 +271,7 @@ function handleHook(ev) {
     case 'SubagentStop': {
       const id = ensureAgent(ev.agent_type);
       const t = runningByAgent[id];
-      if (t) { setTask(t, 'done'); delete runningByAgent[id]; }
+      if (t) { if (ev.last_assistant_message) t.result = clip(ev.last_assistant_message, 30000); setTask(t, 'done'); delete runningByAgent[id]; }
       recentStops[id] = Date.now();
       setAgent(id, { state: 'done', bubble: t ? `Xong ${t.id}` : 'Xong việc' });
       addLog(id, t ? `Xong ${t.id}: ${t.title}` : 'Xong việc', 'done');
@@ -252,6 +296,12 @@ function handleHook(ev) {
       setAgent(boss, { state: 'waiting', bubble: String(ev.message || 'Đang chờ bạn').slice(0, 70) });
       break;
     case 'Stop':
+      if (routineRun && (!routineRun.session || routineRun.session === ev.session_id)) {
+        addLog(boss, `Xong lịch ${routineRun.routine.title || '/' + routineRun.routine.skill}`, 'done');
+        routineRun = null;
+        setAgent(boss, { state: 'idle', at: boss, bubble: 'Xong lịch, về nhà' });
+        break;
+      }
       setAgent(boss, { state: 'idle', bubble: 'Xong lượt, chờ việc' });
       addLog(boss, 'Xong một lượt làm việc', 'done');
       break;
@@ -297,6 +347,42 @@ function handlePermission(ev, res) {
   push();
 }
 
+// ---------- Âm thanh của bạn: tệp tải lên + cài đặt thông báo ----------
+const SOUND_DIR = path.join(DATA, 'am-thanh');
+const SOUND_SETTINGS = path.join(DATA, 'am-thanh.json');
+fs.mkdirSync(SOUND_DIR, { recursive: true });
+const AUDIO = { '.mp3': 'audio/mpeg', '.ogg': 'audio/ogg', '.oga': 'audio/ogg', '.wav': 'audio/wav', '.m4a': 'audio/mp4',
+  '.aac': 'audio/aac', '.webm': 'audio/webm', '.flac': 'audio/flac', '.opus': 'audio/ogg' };
+// Tên tệp an toàn: bỏ dấu, chỉ giữ chữ số và - _ .
+function safeName(n) {
+  const ext = path.extname(String(n || '')).toLowerCase();
+  if (!AUDIO[ext]) return null;
+  const base = path.basename(String(n), path.extname(String(n))).normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd').replace(/Đ/g, 'D').replace(/[^\w-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'am-thanh';
+  return base + ext;
+}
+function listSounds() {
+  return fs.readdirSync(SOUND_DIR).filter(f => AUDIO[path.extname(f).toLowerCase()])
+    .map(f => ({ name: f, size: fs.statSync(path.join(SOUND_DIR, f)).size }));
+}
+function readSoundSettings() { try { return JSON.parse(fs.readFileSync(SOUND_SETTINGS, 'utf8')); } catch { return null; } }
+// Phát tệp âm thanh, có hỗ trợ tua (Range) cho nhạc nền dài
+function serveSound(req, res, name) {
+  const file = path.join(SOUND_DIR, path.basename(name));
+  fs.stat(file, (err, st) => {
+    if (err || !AUDIO[path.extname(file).toLowerCase()]) { res.writeHead(404); return res.end(); }
+    const type = AUDIO[path.extname(file).toLowerCase()];
+    const m = /bytes=(\d*)-(\d*)/.exec(req.headers.range || '');
+    if (m) {
+      const start = m[1] ? Number(m[1]) : 0, end = m[2] ? Math.min(Number(m[2]), st.size - 1) : st.size - 1;
+      res.writeHead(206, { 'Content-Type': type, 'Accept-Ranges': 'bytes', 'Content-Length': end - start + 1, 'Content-Range': `bytes ${start}-${end}/${st.size}` });
+      return fs.createReadStream(file, { start, end }).pipe(res);
+    }
+    res.writeHead(200, { 'Content-Type': type, 'Accept-Ranges': 'bytes', 'Content-Length': st.size });
+    fs.createReadStream(file).pipe(res);
+  });
+}
+
 // ---------- HTTP ----------
 function sendJson(res, code, obj) {
   if (res.writableEnded) return;
@@ -318,6 +404,7 @@ const api = {
   'POST /hook': async (req, res) => {
     const ev = await readBody(req);
     if (ev.hook_event_name === 'PermissionRequest') return handlePermission(ev, res);
+    if (ev.hook_event_name === 'UserPromptSubmit' || ev.hook_event_name === 'Stop') { try { calm.fromHook(ev); } catch (e) { console.error(e); } }
     let out = {};
     try { out = handleHook(ev) || {}; } catch (e) { console.error(e); }
     sendJson(res, 200, out);
@@ -340,16 +427,51 @@ const api = {
   },
   // Agent tạo việc cần duyệt (qua .claude/town/board.js)
   'POST /api/board': async (req, res) => {
-    const { title, agent, status, note } = await readBody(req);
+    const { title, agent, status, note, question, ref } = await readBody(req);
     const id = ensureAgent(agent || config.boss.id);
-    const t = newTask(title || 'Việc mới', id, status || 'waiting_approval');
+    // Calm hỏi Hyan: gắn câu hỏi vào việc có sẵn (ref) hoặc tạo mục mới chờ trả lời
+    const old = ref && board.find(x => x.id === ref);
+    if (question && old) {
+      old.question = question; setTask(old, 'waiting_approval');
+      setAgent(id, { state: 'waiting', bubble: `Hỏi bạn về ${old.id}` });
+      addLog(id, `Hỏi bạn về ${old.id}: ${question}`, 'approval');
+      push(); return sendJson(res, 200, old);
+    }
+    const t = newTask(title || question || 'Việc mới', id, status || 'waiting_approval', [ref, note].join(' '));
     if (note) t.note = note;
+    if (question) t.question = question;
     if (t.status === 'waiting_approval') {
       setAgent(id, { state: 'waiting', bubble: `Chờ bạn duyệt ${t.id}` });
       addLog(id, `Gửi ${t.id} "${t.title}" chờ bạn duyệt`, 'approval');
     } else addLog(id, `Thêm việc ${t.id}: ${t.title}`);
     push();
     sendJson(res, 200, t);
+  },
+  // Hyan trả lời câu hỏi của Calm ngay trong chi tiết việc
+  'POST /api/answer': async (req, res) => {
+    const { id, text, now: resume } = await readBody(req);
+    const t = board.find(x => x.id === id);
+    const ans = String(text || '').trim();
+    if (!t || !ans) return sendJson(res, 400, { ok: false, error: 'Thiếu việc hoặc câu trả lời' });
+    (t.answers ||= []).push({ ts: now(), text: ans });
+    if (t.status === 'waiting_approval' && t.question) setTask(t, 'answered'); else saveBoard();
+    addLog(t.agent, `Bạn trả lời Calm về ${t.id}: ${clip(ans, 120)}`, 'approval');
+    // Ghi vào thư mục của Calm để lượt chạy sau đọc được
+    let saved = false;
+    const cdir = calm.status().dir;
+    if (cdir && fs.existsSync(cdir)) {
+      try {
+        fs.mkdirSync(path.join(cdir, 'lich'), { recursive: true });
+        const block = `\n## ${now()} · ${t.id} · CHƯA XỬ LÝ\n**Việc:** ${t.title}\n` +
+          (t.question ? `**Calm hỏi:** ${t.question}\n` : '') + `**Hyan trả lời:** ${ans}\n`;
+        fs.appendFileSync(path.join(cdir, 'lich', 'tra-loi-cua-hyan.md'), block);
+        saved = true;
+      } catch (e) { console.error(e); }
+    }
+    let sent = false;
+    if (resume) sent = !!calm.send(`Hyan trả lời câu hỏi về ${t.id} ("${t.title}")${t.question ? `\nCâu hỏi: ${t.question}` : ''}\nTrả lời: ${ans}\n(Đã ghi vào lich/tra-loi-cua-hyan.md; xử lý xong thì đổi dòng đó thành ĐÃ XỬ LÝ.)`).ok;
+    push();
+    sendJson(res, 200, { ok: true, saved, sent, task: t });
   },
   'POST /api/log': async (req, res) => {
     const { agent, text, bubble } = await readBody(req);
@@ -365,6 +487,48 @@ const api = {
     if (settings.demo) runDemo({ handleHook, api: demoApi, isOn: () => settings.demo });
     push();
     sendJson(res, 200, settings);
+  },
+  // Phòng Calm: gửi lệnh, dừng, cuộc trò chuyện mới, đọc lịch sử
+  'GET /api/chat': (req, res) => {
+    const q = new URL(req.url, 'http://localhost').searchParams;
+    sendJson(res, 200, { status: calm.status(), messages: calm.history(Number(q.get('before')) || 0, Number(q.get('limit')) || 300) });
+  },
+  'POST /api/chat/send': async (req, res) => sendJson(res, 200, calm.send((await readBody(req)).text)),
+  'POST /api/chat/stop': (req, res) => { calm.stop(); sendJson(res, 200, { ok: true }); },
+  'POST /api/chat/new': (req, res) => sendJson(res, 200, calm.newSession()),
+  'POST /api/chat/dir': async (req, res) => sendJson(res, 200, calm.setDir((await readBody(req)).dir)),
+  // Giao việc thật: chọn nhân vật rồi bấm nhà (trang đã hỏi xác nhận trước)
+  'POST /api/dispatch': async (req, res) => {
+    const { agent, house, confirm } = await readBody(req);
+    if (confirm !== true) return sendJson(res, 400, { ok: false, error: 'Cần xác nhận trước khi chạy' });
+    sendJson(res, 200, dispatch.launch({ agent: String(agent || ''), house: String(house || '') }));
+  },
+  'GET /api/log': (req, res) => sendJson(res, 200, log),
+  'GET /api/sounds': (req, res) => sendJson(res, 200, { files: listSounds(), settings: readSoundSettings() }),
+  'POST /api/sounds/settings': async (req, res) => {
+    const st = await readBody(req);
+    fs.writeFile(SOUND_SETTINGS, JSON.stringify(st, null, 1), () => {});
+    sendJson(res, 200, { ok: true });
+  },
+  // Tải tệp lên: thân yêu cầu là nội dung tệp, tên tệp ở ?name=
+  'POST /api/sounds/upload': (req, res) => {
+    const name = safeName(new URL(req.url, 'http://localhost').searchParams.get('name'));
+    if (!name) return sendJson(res, 400, { error: 'Chỉ nhận tệp âm thanh: mp3, ogg, wav, m4a, aac, webm, flac, opus' });
+    const LIMIT = 40e6;
+    const chunks = []; let size = 0, tooBig = false;
+    req.on('data', c => { size += c.length; if (size > LIMIT) { tooBig = true; req.destroy(); } else chunks.push(c); });
+    req.on('close', () => { if (tooBig) sendJson(res, 413, { error: 'Tệp lớn quá (tối đa 40 MB)' }); });
+    req.on('end', () => {
+      let final = name, i = 2;
+      while (fs.existsSync(path.join(SOUND_DIR, final))) final = name.replace(/(\.\w+)$/, `-${i++}$1`);
+      fs.writeFile(path.join(SOUND_DIR, final), Buffer.concat(chunks), err =>
+        err ? sendJson(res, 500, { error: 'Không lưu được tệp' }) : sendJson(res, 200, { name: final, files: listSounds() }));
+    });
+  },
+  'POST /api/sounds/delete': async (req, res) => {
+    const { name } = await readBody(req);
+    const file = path.join(SOUND_DIR, path.basename(String(name || '')));
+    fs.unlink(file, () => sendJson(res, 200, { files: listSounds() }));
   },
   'POST /api/clear': async (req, res) => {
     board = []; taskSeq = 0; log.length = 0; saveBoard(); fs.writeFile(logFile, '', () => {});
@@ -405,6 +569,7 @@ const server = http.createServer(async (req, res) => {
     return t ? sendJson(res, 200, t) : sendJson(res, 404, { error: 'Không tìm thấy' });
   }
   if (api[key]) return api[key](req, res);
+  if (req.method === 'GET' && url.pathname.startsWith('/am-thanh/')) return serveSound(req, res, decodeURIComponent(url.pathname.slice(10)));
   if (req.method !== 'GET') return sendJson(res, 404, { error: 'Không có' });
   // File tĩnh trong thư mục web/
   const rel = url.pathname === '/' ? 'index.html' : decodeURIComponent(url.pathname).replace(/^\/+/, '');

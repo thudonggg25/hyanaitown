@@ -7,6 +7,8 @@
 //   node .claude/town/board.js cho <MÃ-VIỆC>        Chờ tiếp một việc đã gửi.
 //   node .claude/town/board.js xem <MÃ-VIỆC>        Xem trạng thái một việc ngay, không chờ.
 //   node .claude/town/board.js ds                   Liệt kê việc đang chờ duyệt và việc mới duyệt / từ chối.
+//   node .claude/town/board.js hoi "Câu hỏi cho Hyan" --agent calm [--ve HLP-010]
+//       Hỏi Hyan (không chờ). Hyan trả lời trong game; câu trả lời ghi vào lich/tra-loi-cua-hyan.md.
 //   node .claude/town/board.js ghi "Nội dung" --agent viet-bai [--bubble "chữ trên đầu"]
 //       Ghi một dòng vào nhật ký (và đổi bong bóng nếu có).
 
@@ -44,6 +46,11 @@ async function waitFor(id, maxMinutes = 9) {
       const t = await call('POST', '/api/board', { title, agent, note, status: 'waiting_approval' });
       console.log(`Đã gửi ${t.id}: ${t.title}`);
       process.exit(noWait ? 0 : await waitFor(t.id));
+    } else if (cmd === 'hoi') {
+      const agent = opt('agent') || 'calm', ref = opt('ve');
+      const question = args.join(' ');
+      const t = await call('POST', '/api/board', { title: ref ? `Câu hỏi về ${ref}` : question.slice(0, 80), question, ref, agent, status: 'waiting_approval' });
+      console.log(`Đã hỏi Hyan (${t.id}). Câu trả lời sẽ có trong lich/tra-loi-cua-hyan.md.`);
     } else if (cmd === 'cho') {
       process.exit(await waitFor(args[0]));
     } else if (cmd === 'xem') {
@@ -59,7 +66,7 @@ async function waitFor(id, maxMinutes = 9) {
       await call('POST', '/api/log', { agent, text: args.join(' '), bubble });
       console.log('Đã ghi.');
     } else {
-      console.log('Dùng: duyet "Tiêu đề" --agent <id> | cho <MÃ-VIỆC> | xem <MÃ-VIỆC> | ds | ghi "Nội dung" --agent <id>');
+      console.log('Dùng: duyet "Tiêu đề" --agent <id> | cho <MÃ-VIỆC> | xem <MÃ-VIỆC> | hoi "Câu hỏi" [--ve MÃ] | ds | ghi "Nội dung" --agent <id>');
       process.exit(1);
     }
   } catch (e) {

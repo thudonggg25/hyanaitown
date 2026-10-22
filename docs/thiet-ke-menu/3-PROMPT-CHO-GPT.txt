@@ -1,0 +1,54 @@
+CÁCH DÙNG (đọc phần này, KHÔNG dán vào GPT)
+==========================================
+1. Mở một chat mới với ChatGPT.
+2. Kéo thả 2 ảnh trong thư mục này vào chat:
+     1-giao-dien-hien-tai.jpg
+     2-bo-manh-giao-dien-hien-tai.jpg
+3. Chép nguyên PROMPT 1 bên dưới, dán vào, gửi.
+   GPT sẽ liệt kê 10 hướng thiết kế rồi vẽ bộ số 1.
+4. Mỗi lần muốn xem bộ tiếp theo, gõ:  tiếp
+   (GPT vẽ lần lượt bộ 2, 3, ... 10. Mỗi bộ một ảnh.)
+5. Chọn được bộ ưng ý (ví dụ bộ 4) thì dán PROMPT 2, đổi số 4 cho đúng.
+   GPT sẽ vẽ các tấm ảnh "mảnh rời" để lắp vào game.
+6. Tải các ảnh mảnh rời về, gửi cho Claude trong chat thread. Claude cắt và lắp vào game.
+
+Mẹo: bộ nào gần ưng mà còn lệch chút, cứ nói với GPT kiểu
+"bộ 4 nhưng nút tròn hơn, màu ấm hơn" rồi để nó vẽ lại.
+
+
+==================== PROMPT 1 (dán từ dòng dưới) ====================
+You are a senior game UI/UX artist. I am making a cozy web game called "Thị trấn AI của Hyan" (Hyan's AI Town): a hand-painted anime floating-island town seen from a fixed top-down 3/4 view, where each house is a department and chibi characters are AI agents that walk between houses, hand off tasks and wait for my approval.
+
+Image 1 is the CURRENT game screen. Image 2 shows the current UI pieces (wood/paper panels, pill buttons, icons). I want to REDESIGN the whole menu / HUD so it feels like a polished 2D game on Steam (think Stardew Valley, Spiritfarer, Ooblets, Unpacking, Cozy Grove), clearly readable, while staying in the same soft hand-painted anime watercolor style as the town art. The town artwork itself stays exactly the same; only the UI on top changes.
+
+UI elements that every design must include (all labels are in Vietnamese, keep them):
+- Top-left title card: "Thị trấn AI của Hyan" + small green status dot + subtitle "Đội vận hành Helper"
+- Toolbar with 9 buttons, each icon + label: Lướt, Tên, Bong bóng, Toàn cảnh, Tổng quan, Nhật ký, Tự chạy, Âm thanh, 1 bước duyệt (the last one is the main highlighted action)
+- Right panel "Tổng quan": 4 stat counters (Đang chạy, Sắp làm, Chờ duyệt, Lỗi), a list "Chờ bạn duyệt" with cards that have Duyệt (approve) and Từ chối (reject) buttons, and a list "Bảng việc" with rows like "HLP-073  task name  [status badge]"
+- Status badges: Đang chạy, Sắp làm, Chờ duyệt, Đã duyệt, Xong, Bị trả lại, Lỗi
+- Bottom-left panel "Nhật ký việc": a day header and log lines "22:43  QA  text..."
+- Agent detail panel (opens when clicking a character): portrait circle, name, role, current task, a progress bar, recent tasks
+- A notification toast (top center) for: needs approval, error, task done
+- A modal popup for important warnings/errors with 1-2 buttons
+- Speech bubbles above characters and wooden name signs on houses
+- A small sound settings popover: on/off toggle, 2 volume sliders, preview buttons
+
+STEP A: First, in text only, propose 10 clearly DIFFERENT design directions for this UI kit. For each give: a short name, the material/theme (e.g. wood and parchment, stained glass, botanical garden, starry night, paper craft, ceramic tiles, cloud and sky...), color palette (5 hex colors), shape language (corners, borders, ornaments), button style, and how it keeps text readable over the busy town art.
+
+STEP B: Then draw design #1 as ONE full-screen 16:9 mockup (1536x1024 or wider): the same town scene as image 1 in the background, with the complete redesigned UI on top showing every element listed above (toolbar, both panels, an open agent detail panel, one toast, one popup, bubbles, signs). Vietnamese text must be spelled correctly with all accents. Keep a consistent style inside each design.
+
+After that, each time I type "tiếp", draw the next design (#2, #3 ... #10) the same way, one mockup per message. Do not repeat the same look twice.
+==================== HẾT PROMPT 1 ====================
+
+
+==================== PROMPT 2 (dán sau khi đã chọn, đổi số 4) ====================
+I choose design #4. Now turn it into game-ready ASSET SHEETS so a developer can slice them into separate images. Make each sheet a separate image, in this order (wait for my "tiếp" between sheets):
+
+Rules for ALL sheets: exactly the style of design #4; front view, flat, no perspective; plain pure white background; generous empty space between pieces; NO text, NO letters, NO numbers anywhere (the game writes text itself); every frame/button/bar has a plain empty center and uniform borders and corners so it can be 9-slice stretched; pieces aligned in a neat grid.
+
+Sheet 1 - PANELS (1536x1024): large side panel with a header bar for the title; small card; agent detail panel with an empty round portrait frame; modal popup frame with header ribbon; sound settings popover.
+Sheet 2 - BUTTONS (1536x1024): wide pill/rounded button in 4 colors (main action, normal, warning, danger) x 4 states (normal, hover = brighter with glow, pressed = darker and pushed in, disabled = grey). Also one small square icon button in the same 4 states.
+Sheet 3 - TOASTS and BADGES (1024x1536): 4 toast cards (info, success, warning, error) each with an empty round icon slot on the left; 7 small pill status badges (running, upcoming, waiting approval, approved, done, rejected, error) each with a tiny symbol on the left and empty center.
+Sheet 4 - ICONS (1024x1024): 16 icons in a 4x4 grid, each centered in its own square cell, same size and line weight: camera drift, name tag, speech bubble, home view, overview map, log book, play (auto run), stop, sound on, sound muted, approve check, reject cross, warning, error, bell notification, envelope hand-off.
+Sheet 5 - SMALL PARTS (1536x1024): progress bar empty track + fill bar (green, amber, red); toggle switch on and off; slider track + slider knob; checkbox checked and unchecked; scrollbar track + thumb; speech bubble with tail (plain white and highlighted); wooden/house name sign plate; divider line ornament; close (x) button.
+==================== HẾT PROMPT 2 ====================

@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Thị trấn AI agent</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ctext y=%22.9em%22 font-size=%2290%22%3E%F0%9F%8F%A1%3C/text%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@500;700;800&display=swap">
   <link rel="stylesheet" href="style.css">
   <script type="importmap">
     { "imports": { "three": "./vendor/three.module.js" } }
@@ -13,39 +15,175 @@
 <body>
   <div id="scene"></div>
 
-  <header id="topbar">
-    <div class="brand">
+  <!-- Cột trái: tên thị trấn, lưới nút, âm thanh nhanh -->
+  <div id="leftcol">
+    <div class="card brand">
       <div class="title" id="title">Thị trấn AI agent</div>
       <div class="sub"><span id="conn" class="dot off"></span><span id="subtitle">Đang kết nối…</span></div>
     </div>
-    <nav class="tools">
-      <button data-act="rotate" title="Camera tự lướt chậm qua thị trấn">Lướt</button>
-      <button data-act="names" class="on">Tên</button>
-      <button data-act="bubbles" class="on">Bong bóng</button>
-      <button data-act="home">Toàn cảnh</button>
-      <button data-act="overview" class="on">Tổng quan</button>
-      <button data-act="log" class="on">Nhật ký</button>
-      <button data-act="demo" id="btn-demo">Tự chạy</button>
-      <button data-act="approve1" class="primary" id="btn-approve1">1 bước duyệt</button>
+    <nav class="card tools">
+      <button data-act="calm" id="btn-calm" class="tile wide calm-btn" title="Giao việc và đọc trả lời của Calm"><img src="assets/ui/icon-mail.webp" alt=""><span>Phòng Calm</span><b id="calm-badge" class="badge hidden">0</b></button>
+      <button data-act="rotate" class="tile" title="Camera tự lướt chậm qua thị trấn"><img src="assets/ui/icon-drift.webp" alt=""><span>Lướt</span></button>
+      <button data-act="names" class="tile on" title="Hiện / ẩn tên"><img src="assets/ui/icon-name.webp" alt=""><span>Tên</span></button>
+      <button data-act="bubbles" class="tile on" title="Hiện / ẩn bong bóng"><img src="assets/ui/icon-bubble.webp" alt=""><span>Bong bóng</span></button>
+      <button data-act="home" class="tile" title="Xem toàn cảnh"><img src="assets/ui/icon-home.webp" alt=""><span>Toàn cảnh</span></button>
+      <button data-act="overview" class="tile on green"><img src="assets/ui/icon-map.webp" alt=""><span>Tổng quan</span></button>
+      <button data-act="log" class="tile on lilac"><img src="assets/ui/icon-log.webp" alt=""><span>Nhật ký</span></button>
+      <button data-act="demo" id="btn-demo" class="tile" title="Chạy thử với việc giả"><img src="assets/ui/icon-play.webp" alt=""><span>Tự chạy</span></button>
+      <button data-act="sound" id="btn-sound" class="tile" title="Âm thanh và thông báo"><img src="assets/ui/icon-sound.webp" alt=""><span>Âm thanh</span></button>
+      <button data-act="approve1" id="btn-approve1" class="tile primary" title="Duyệt việc đầu tiên đang chờ"><img src="assets/ui/icon-ok.webp" alt=""><span>1 bước duyệt</span></button>
     </nav>
-  </header>
+    <div id="soundpop" class="card pop hidden">
+      <div class="pop-head"><h2>Âm thanh</h2><label class="switch"><input type="checkbox" id="q-on"><i></i><span>Bật</span></label></div>
+      <div class="qrow"><img src="assets/ui/icon-music.webp" alt=""><span class="lbl">Nhạc nền</span><input type="range" id="q-music" min="0" max="100"><b id="q-music-v">0%</b><button class="pill" id="q-music-try">▶ Nghe thử</button></div>
+      <div class="qrow"><img src="assets/ui/icon-sound.webp" alt=""><span class="lbl">Hiệu ứng</span><input type="range" id="q-sfx" min="0" max="100"><b id="q-sfx-v">0%</b><button class="pill" id="q-sfx-try">▶ Nghe thử</button></div>
+      <button class="link-btn" id="q-more">Cài đặt thông báo chi tiết, nhạc của bạn ›</button>
+    </div>
+  </div>
+
+  <div id="settings-wrap" class="modal-wrap hidden">
+    <div class="backdrop" id="settings-back"></div>
+    <div id="settings" class="modal mid">
+      <h2>Cài đặt thông báo</h2>
+      <button class="close" id="settings-close" aria-label="Đóng">×</button>
+      <div class="body mbody">
+        <h3>Chung</h3>
+        <label class="row"><input type="checkbox" id="set-muted"> Bật âm thanh</label>
+        <label class="row vol">Âm lượng tiếng báo <input type="range" id="set-sfx" min="0" max="100"></label>
+        <label class="row"><input type="checkbox" id="set-desktop"> Báo ra màn hình máy tính khi đang mở tab khác</label>
+
+        <h3>Từng loại thông báo</h3>
+        <table class="events">
+          <thead><tr><th>Loại</th><th>Hiện</th><th>Kêu</th><th>Tiếng</th><th></th></tr></thead>
+          <tbody id="set-events"></tbody>
+        </table>
+
+        <h3>Nhạc nền</h3>
+        <label class="row"><input type="checkbox" id="set-music"> Bật nhạc nền</label>
+        <label class="row vol">Âm lượng nhạc <input type="range" id="set-music-vol" min="0" max="100"></label>
+        <div class="row src">
+          <label><input type="radio" name="set-src" value="lofi"> Lo-fi tự tạo</label>
+          <label><input type="radio" name="set-src" value="files"> Nhạc của bạn</label>
+          <label><input type="checkbox" id="set-shuffle"> Phát ngẫu nhiên</label>
+          <button class="mini" id="set-next" title="Bài kế tiếp">⏭ Bài kế</button>
+        </div>
+        <div class="now" id="set-now"></div>
+
+        <h3>Tệp âm thanh của bạn</h3>
+        <div class="row up">
+          <button id="set-upload">Tải tệp lên</button>
+          <span class="hint">mp3, ogg, wav, m4a… tối đa 40 MB. Kéo thả vào đây cũng được.</span>
+          <input type="file" id="set-file" accept="audio/*,.mp3,.ogg,.wav,.m4a,.flac,.opus,.webm" multiple hidden>
+        </div>
+        <div class="upmsg" id="set-upmsg"></div>
+        <ul class="files" id="set-files"></ul>
+        <p class="hint">Tích ô trước tên tệp để đưa vào nhạc nền. Muốn dùng tệp làm tiếng báo thì chọn nó ở cột "Tiếng" phía trên.</p>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- Phòng Calm: giao việc, đọc trả lời đầy đủ, chọn phương án -->
+  <div id="calm-wrap" class="modal-wrap hidden">
+    <div class="backdrop" data-close="calm-wrap"></div>
+    <div class="modal big">
+      <h2>Phòng Calm</h2>
+      <button class="close" data-close="calm-wrap" aria-label="Đóng">×</button>
+      <div class="room-bar">
+        <div id="calm-status" class="cstatus"></div>
+        <label class="chk"><input type="checkbox" id="calm-steps" checked> Hiện các bước làm</label>
+        <button id="calm-new" title="Cuộc trò chuyện mới">Cuộc mới</button>
+      </div>
+      <div id="calm-msgs" class="msgs"></div>
+      <div class="quick">
+        <button data-quick="Đội đang làm gì? Tóm tắt từng người, việc nào đang kẹt, việc nào chờ mình duyệt.">Đội đang làm gì?</button>
+        <button data-quick="/kiem-tra-dinh-ky">Kiểm tra định kỳ</button>
+        <button data-quick="/nhan-feedback">Nhận feedback mới</button>
+        <button data-quick="/bao-cao-ngay">Báo cáo hôm nay</button>
+      </div>
+      <div class="composer">
+        <textarea id="calm-input" rows="2" placeholder="Gõ việc muốn giao cho Calm… (Enter để gửi, Shift+Enter để xuống dòng)"></textarea>
+        <div class="btns">
+          <button id="calm-send" class="send">Gửi</button>
+          <button id="calm-stop" class="stop hidden">Dừng</button>
+        </div>
+      </div>
+      <div id="calm-dirbox" class="dirbox">Thư mục làm việc của Calm: <span id="calm-dir"></span> <button id="calm-setdir" class="mini">Đổi</button></div>
+    </div>
+  </div>
+
+  <!-- Calm hỏi bạn: hiện ngay khi Calm đưa lựa chọn -->
+  <div id="ask-wrap" class="modal-wrap hidden">
+    <div class="backdrop" data-close="ask-wrap"></div>
+    <div class="modal mid">
+      <h2>Calm hỏi bạn</h2>
+      <button class="close" data-close="ask-wrap" aria-label="Đóng">×</button>
+      <div id="ask-body" class="mbody"></div>
+      <div class="mfoot"><button id="ask-other">Trả lời khác trong phòng Calm</button></div>
+    </div>
+  </div>
+
+  <!-- Xác nhận giao việc thật (chọn nhân vật rồi bấm nhà) -->
+  <div id="send-wrap" class="modal-wrap hidden">
+    <div class="backdrop" data-close="send-wrap"></div>
+    <div class="modal mid">
+      <h2>Giao việc thật?</h2>
+      <button class="close" data-close="send-wrap" aria-label="Đóng">×</button>
+      <div id="send-body" class="mbody"></div>
+      <div class="mfoot"><button data-close="send-wrap">Thôi</button>&nbsp;<button id="send-ok">Chạy thật</button></div>
+    </div>
+  </div>
+
+  <!-- Chi tiết một việc -->
+  <div id="task-wrap" class="modal-wrap hidden">
+    <div class="backdrop" data-close="task-wrap"></div>
+    <div class="modal mid">
+      <h2>Chi tiết việc</h2>
+      <button class="close" data-close="task-wrap" aria-label="Đóng">×</button>
+      <div id="task-body" class="mbody"></div>
+    </div>
+  </div>
+
+  <!-- Nhật ký đầy đủ -->
+  <div id="flog-wrap" class="modal-wrap hidden">
+    <div class="backdrop" data-close="flog-wrap"></div>
+    <div class="modal big">
+      <h2>Nhật ký đầy đủ</h2>
+      <button class="close" data-close="flog-wrap" aria-label="Đóng">×</button>
+      <div class="room-bar">
+        <input id="flog-q" type="search" placeholder="Tìm chữ, mã việc…">
+        <select id="flog-agent"></select>
+        <select id="flog-kind">
+          <option value="">Mọi loại</option><option value="start">Bắt đầu việc</option><option value="handoff">Giao / bàn giao</option>
+          <option value="done">Xong việc</option><option value="approval">Duyệt</option><option value="error">Lỗi</option><option value="info">Khác</option>
+        </select>
+        <span id="flog-count" class="hint"></span>
+      </div>
+      <div id="flog-body" class="mbody flog"></div>
+      <p class="hint">Bấm vào dòng có mã việc để xem chi tiết việc đó.</p>
+    </div>
+  </div>
+
+  <div id="toasts"></div>
+  <div id="errbox" class="card hidden"></div>
 
   <aside id="overview" class="panel">
     <h2>Tổng quan</h2>
     <div class="stats">
-      <div class="stat"><b id="s-running">0</b><span>Đang chạy</span></div>
-      <div class="stat"><b id="s-queued">0</b><span>Sắp làm</span></div>
-      <div class="stat warn"><b id="s-waiting">0</b><span>Chờ duyệt</span></div>
-      <div class="stat bad"><b id="s-error">0</b><span>Lỗi</span></div>
+      <div class="stat run"><span class="ic"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M10 8l6 4-6 4z"/></svg></span><b id="s-running">0</b><span>Đang chạy</span></div>
+      <div class="stat next"><span class="ic"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 7v5l3 2"/></svg></span><b id="s-queued">0</b><span>Sắp làm</span></div>
+      <div class="stat warn"><span class="ic"><img src="assets/ui/icon-bell.webp" alt=""></span><b id="s-waiting">0</b><span>Chờ duyệt</span></div>
+      <div class="stat bad"><span class="ic"><img src="assets/ui/icon-warn.webp" alt=""></span><b id="s-error">0</b><span>Lỗi</span></div>
     </div>
     <h3>Chờ bạn duyệt</h3>
     <ul id="approvals" class="list"></ul>
-    <h3>Bảng việc</h3>
+    <h3>Bảng việc <small id="board-count"></small></h3>
     <ul id="board" class="list compact"></ul>
   </aside>
 
   <aside id="log" class="panel">
     <h2>Nhật ký việc</h2>
+    <button class="expand" id="log-full" title="Xem nhật ký đầy đủ">Xem đầy đủ</button>
     <div id="logbody"></div>
   </aside>
 
@@ -54,7 +192,7 @@
     <div id="detailbody"></div>
   </aside>
 
-  <footer id="credits">Thị trấn AI agent · three.js 2.5D · tranh anime vẽ tay · kéo để di chuyển, cuộn để phóng to</footer>
+  <footer id="credits">Kéo để di chuyển · cuộn để phóng to · bấm nhân vật, nhà hay việc để xem chi tiết · chọn nhân vật rồi bấm một nhà để giao việc thật</footer>
 
   <script type="module" src="app.js"></script>
 </body>

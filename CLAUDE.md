@@ -52,3 +52,19 @@ hyan chốt: làm **web game** three.js (không làm client riêng), đội AI �
 - Toạ độ ô đất, quảng trường trong `PLOTS` / `PLAZA` ở đầu `web/app.js` (pixel ảnh 1920×1080). 3 Coder ở chung "Xưởng Code".
 - Nhân vật: bảng 4 dáng (thẳng, lưng, nghiêng trái, bước phải) cắt thành sprite sheet; đi bộ bằng 2 khung luân phiên + lật ngang, đi vòng qua quảng trường.
 - Sprite tạo lại bằng `python3 tools/lam_sprite.py` (Pillow + numpy): xoá nền trắng bằng loang màu từ mép, ra `web/assets/sprites/`.
+
+## Bản 0.4 (21/10/2026): chuyển động, âm thanh, prompt vẽ
+
+- hyan chốt: tranh phẳng vẽ tay, camera không xoay. Đã thử 3D và 2.5D nghiêng, hyan không thích, đừng làm lại.
+- Chuyển động (`stepPerson` trong `web/app.js`): bước đếm theo quãng đường (`STEP_LEN`), nhún, bẹp/vươn, ngả người theo hướng đi; đổi dáng bằng "xoay người" (bóp hẹp rồi nở, `TURN_TIME`) thay vì lật gương tức thì. Rảnh thì ngó nghiêng, chờ duyệt thì nhảy.
+- Dáng đi nhiều khung: thêm `walk: { file, cols, rows: ['down','up','left','right'] }` vào nhân vật trong `sprites.json` là game tự dùng (thiếu hàng `right` thì lật hàng `left`).
+- Âm thanh `web/sound.js`: Web Audio tự tạo (tin mới, cần duyệt, lỗi, xong việc, bàn giao, nhạc nền lo-fi), nút 🔊 có âm lượng, nhớ trong localStorage. Tiếng gắn với nhật ký thật (`announce` trong app.js), kèm thông báo nổi.
+- Prompt GPT cho walk cycle và UI: `docs/PROMPT-GPT.md`. Ảnh hyan gửi lại phải commit vào repo, không để trong project files (ảnh lớn làm treo phiên).
+- Ảnh do Claude tự vẽ bằng skill `create-image` (9router codex-image). Ảnh gốc ở `F:\AI-Workspace\hyanaitown-anh-2026-10-21\` (có `ve_buoc_di.sh`). Ảnh mẫu tham chiếu phải là PNG nền trắng (`ref/<mã>.png`) kèm mô tả chữ; dùng webp trong suốt thì model bỏ qua ảnh mẫu và vẽ sai người.
+- Dáng đi: `python tools/lam_buoc_di.py <thư mục ảnh> <mã>...` (6 khung mỗi hướng, xuống/lên/trái; `coder-b=coder`, `khach=tiep-nhan` dùng chung).
+- Giao diện vẽ tay: `python tools/lam_ui.py <thư mục ảnh>` cắt icon, nút 4 màu × 4 trạng thái, khung bảng, thẻ thông báo, biển gỗ ra `web/assets/ui/`; CSS dùng `border-image` ở cuối `web/style.css`.
+- Đổi hướng kiểu game 2D: đổi khung ngay, không bóp hình (hyan chê bóp trông như tờ giấy); quay ngược hẳn thì qua khung nhìn thẳng 0,075 giây.
+- Bảng "Cài đặt thông báo" (`web/settings.js`, nút Thông báo): bật/tắt thông báo và tiếng cho từng loại, chọn tiếng, tải tệp âm thanh lên (`POST /api/sounds/upload`, lưu `data/am-thanh/`), nhạc nền từ tệp của bạn, báo ra màn hình khi ở tab khác. Cài đặt lưu `data/am-thanh.json`.
+- Rảnh (idle/done, ở nhà) 5-12 giây thì ra quảng trường nằm ngủ trên tấm chăn (`BEDS`, ảnh `nv/<mã>-ngu.webp` làm bằng `tools/lam_ngu.py`), có Zzz; có việc thì bật dậy rồi chạy về.
+- Phòng Calm (`calm.js` ở server, `web/phong-calm.js`, `web/md.js`): gõ việc trong game → server chạy `claude -p --output-format stream-json --resume <phiên>` trong `calm.dir` (town.config.json, đổi được trên trang), đẩy tin qua SSE sự kiện `chat`, lưu `data/tro-chuyen.jsonl`. Phiên gõ trong Claude Code / lịch được ghi qua hooks UserPromptSubmit + Stop (`last_assistant_message`). Lựa chọn: Calm viết khối ```lua-chon {json}``` (dặn qua `--append-system-prompt`), không có thì đoán từ danh sách 1. 2. 3.; hiện hộp "Calm hỏi bạn" giữa màn hình. Việc lưu `brief` (đề bài), `steps`, `result` (báo cáo SubagentStop) để xem "Chi tiết việc".
+- Giao diện theo mẫu hyan chọn (`docs/thiet-ke-menu/mau-da-chon.png`): thẻ kem bo tròn, màu pastel, viết bằng CSS (không còn khung gỗ border-image, chỉ giữ biển gỗ trên nhà và icon vẽ tay). Trên cùng: tên + một hàng nút nhỏ (hyan chê lưới 3×3 chiếm chỗ; màn hẹp chỉ còn biểu tượng) + thẻ Âm thanh nhanh hiện dưới nút; phải: Tổng quan; dưới trái: Nhật ký chấm màu theo người; dưới giữa: thẻ nhân vật có ảnh mặt (`nv/<mã>-mat.webp`, `tools/lam_mat.py`); hộp lỗi có nút "Nhờ Calm xử lý".

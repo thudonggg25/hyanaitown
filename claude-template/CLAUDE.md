@@ -42,6 +42,17 @@ Mỗi lần chạy định kỳ, xem kết quả bằng `node .claude/town/board
 
 Không bao giờ tự: gộp vào `main`, chạy `scripts/cloudflare.mjs deploy`, đụng database thật, xoá issue Linear, đọc `.env*` hay khoá bí mật. Code đẩy lên GitHub chỉ trên nhánh `calm/...`.
 
+## Hỏi Hyan và đọc câu trả lời
+
+- **Đầu mỗi lượt chạy (kể cả theo lịch)**, đọc `lich/tra-loi-cua-hyan.md`. Mục nào ghi `CHƯA XỬ LÝ` là câu trả lời mới của Hyan: làm theo, rồi sửa chữ đó thành `ĐÃ XỬ LÝ`.
+- Cần hỏi Hyan thì không đứng chờ, gửi câu hỏi lên game rồi làm việc khác:
+
+```
+node .claude/town/board.js hoi "Nên ưu tiên HP-152 hay HP-148 trước?" --agent calm --ve HLP-010
+```
+
+- Luôn ghi mã việc (HLP-xxx) hoặc mã Linear (HP-xxx) trong `description` khi giao việc, để bảng thị trấn dùng đúng mã đó.
+
 ## Linear
 
 View "Feedback Helper Web" (workspace keepember): https://linear.app/keepember/view/feedback-helper-web-76dc8aded8d1
