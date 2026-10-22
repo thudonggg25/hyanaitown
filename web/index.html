@@ -7,7 +7,7 @@
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ctext y=%22.9em%22 font-size=%2290%22%3E%F0%9F%8F%A1%3C/text%3E%3C/svg%3E">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@500;700;800&display=swap">
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=nut-cai-dat">
   <script type="importmap">
     { "imports": { "three": "./vendor/three.module.js" } }
   </script>
@@ -17,19 +17,25 @@
 
   <!-- HUD rải đều 4 cạnh, giữa để trống cho bản đồ -->
   <!-- Trên trái: biển tên -->
+  <div id="topleft">
   <div id="brand" class="wood plaque">
     <div class="title" id="title">Thị trấn AI agent</div>
     <div class="sub"><span id="conn" class="dot off"></span><span id="subtitle">Đang kết nối…</span></div>
   </div>
+  <!-- Ngay bên phải biển tên, cùng hàng: bộ đếm hàng ngang, bấm để mở Tổng quan -->
+  <nav id="counters" class="wood hud" title="Bấm để mở Tổng quan">
+    <button class="cnt run" data-act="overview"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M10 8l6 4-6 4z"/></svg><b id="c-running">0</b><span>Đang chạy</span></button>
+    <button class="cnt next" data-act="overview"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 7v5l3 2"/></svg><b id="c-queued">0</b><span>Sắp làm</span></button>
+    <button class="cnt warn" data-act="overview"><img src="assets/ui/icon-bell.webp" alt=""><b id="c-waiting">0</b><span>Chờ duyệt</span></button>
+    <button class="cnt bad" data-act="overview"><img src="assets/ui/icon-warn.webp" alt=""><b id="c-error">0</b><span>Lỗi</span></button>
+  </nav>
+  </div>
 
-  <!-- Cạnh trên: hàng nút xem -->
+
+  <!-- Trên phải: chỉ chuông thông báo + nút Cài đặt -->
   <nav id="topbar" class="wood hud">
-    <button data-act="rotate" class="tile" title="Camera tự lướt chậm qua thị trấn"><img src="assets/ui/icon-drift.webp" alt=""><span>Lướt</span></button>
-    <button data-act="names" class="tile on" title="Hiện / ẩn tên"><img src="assets/ui/icon-name.webp" alt=""><span>Tên</span></button>
-    <button data-act="bubbles" class="tile on" title="Hiện / ẩn bong bóng"><img src="assets/ui/icon-bubble.webp" alt=""><span>Bong bóng</span></button>
-    <button data-act="home" class="tile" title="Xem toàn cảnh"><img src="assets/ui/icon-home.webp" alt=""><span>Toàn cảnh</span></button>
-    <button data-act="notifs" id="btn-notifs" class="tile" title="Thông báo"><img src="assets/ui/icon-bell.webp" alt=""><span>Thông báo</span><b id="notif-badge" class="badge hidden">0</b></button>
-    <button data-act="sound" id="btn-sound" class="tile" title="Âm thanh và thông báo"><img src="assets/ui/icon-sound.webp" alt=""><span>Âm thanh</span></button>
+    <button data-act="notifs" id="btn-notifs" class="tile" title="Thông báo (N)"><img src="assets/ui/icon-bell.webp" alt=""><span>Thông báo</span><b id="notif-badge" class="badge hidden">0</b></button>
+    <button data-act="settings" id="btn-settings" class="tile" title="Cài đặt: hiển thị, âm thanh, thông báo, phím tắt"><svg class="ico" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1"/><circle cx="12" cy="12" r="6.6"/></svg><span>Cài đặt</span></button>
   </nav>
 
   <!-- Cạnh trái: thanh dọc mở bảng -->
@@ -42,13 +48,6 @@
     <button data-act="approve1" id="btn-approve1" class="tile primary" title="Duyệt việc đầu tiên đang chờ"><img src="assets/ui/icon-ok.webp" alt=""><span>Duyệt nhanh</span><b id="approve-badge" class="badge warn hidden">0</b></button>
   </nav>
 
-  <!-- Cạnh phải: bộ đếm gọn, bấm để mở Tổng quan -->
-  <nav id="counters" class="wood hud vbar" title="Bấm để mở Tổng quan">
-    <button class="cnt run" data-act="overview"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M10 8l6 4-6 4z"/></svg><b id="c-running">0</b><span>Đang chạy</span></button>
-    <button class="cnt next" data-act="overview"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 7v5l3 2"/></svg><b id="c-queued">0</b><span>Sắp làm</span></button>
-    <button class="cnt warn" data-act="overview"><img src="assets/ui/icon-bell.webp" alt=""><b id="c-waiting">0</b><span>Chờ duyệt</span></button>
-    <button class="cnt bad" data-act="overview"><img src="assets/ui/icon-warn.webp" alt=""><b id="c-error">0</b><span>Lỗi</span></button>
-  </nav>
 
   <!-- Dưới trái: khung chat trực tiếp (gọn, thu lại được) -->
   <aside id="chat" class="wood">
@@ -67,30 +66,21 @@
     <ul id="nf-list"></ul>
   </aside>
 
-  <div id="soundpop" class="card pop hidden">
-    <div class="pop-head"><h2>Âm thanh</h2><label class="switch"><input type="checkbox" id="q-on"><i></i><span>Bật</span></label><button class="close" id="soundpop-close" aria-label="Đóng">×</button></div>
-    <div class="qrow"><img src="assets/ui/icon-music.webp" alt=""><span class="lbl">Nhạc nền</span><input type="range" id="q-music" min="0" max="100"><b id="q-music-v">0%</b><button class="pill" id="q-music-try">▶ Nghe thử</button></div>
-    <div class="qrow"><img src="assets/ui/icon-sound.webp" alt=""><span class="lbl">Hiệu ứng</span><input type="range" id="q-sfx" min="0" max="100"><b id="q-sfx-v">0%</b><button class="pill" id="q-sfx-try">▶ Nghe thử</button></div>
-    <button class="link-btn" id="q-more">Cài đặt thông báo chi tiết, nhạc của bạn ›</button>
-  </div>
-
   <div id="settings-wrap" class="modal-wrap hidden">
     <div class="backdrop" id="settings-back"></div>
     <div id="settings" class="modal mid">
-      <h2>Cài đặt thông báo</h2>
+      <h2>Cài đặt</h2>
       <button class="close" id="settings-close" aria-label="Đóng">×</button>
       <div class="body mbody">
-        <h3>Chung</h3>
+        <h3>Hiển thị</h3>
+        <label class="row"><input type="checkbox" id="set-drift"> Camera tự lướt chậm qua thị trấn</label>
+        <label class="row"><input type="checkbox" id="set-names" checked> Hiện tên nhân vật và nhà</label>
+        <label class="row"><input type="checkbox" id="set-bubbles" checked> Hiện bong bóng lời nói</label>
+        <div class="row"><button id="set-home">Xem toàn cảnh</button><span class="hint">Đưa camera về giữa thị trấn</span></div>
+
+        <h3>Âm thanh</h3>
         <label class="row"><input type="checkbox" id="set-muted"> Bật âm thanh</label>
         <label class="row vol">Âm lượng tiếng báo <input type="range" id="set-sfx" min="0" max="100"></label>
-        <label class="row"><input type="checkbox" id="set-desktop"> Báo ra màn hình máy tính khi đang mở tab khác</label>
-
-        <h3>Từng loại thông báo</h3>
-        <table class="events">
-          <thead><tr><th>Loại</th><th>Hiện</th><th>Kêu</th><th>Tiếng</th><th></th></tr></thead>
-          <tbody id="set-events"></tbody>
-        </table>
-
         <h3>Nhạc nền</h3>
         <label class="row"><input type="checkbox" id="set-music"> Bật nhạc nền</label>
         <label class="row vol">Âm lượng nhạc <input type="range" id="set-music-vol" min="0" max="100"></label>
@@ -110,7 +100,25 @@
         </div>
         <div class="upmsg" id="set-upmsg"></div>
         <ul class="files" id="set-files"></ul>
-        <p class="hint">Tích ô trước tên tệp để đưa vào nhạc nền. Muốn dùng tệp làm tiếng báo thì chọn nó ở cột "Tiếng" phía trên.</p>
+        <p class="hint">Tích ô trước tên tệp để đưa vào nhạc nền. Muốn dùng tệp làm tiếng báo thì chọn nó ở cột "Tiếng" bên dưới.</p>
+
+        <h3>Thông báo</h3>
+        <label class="row"><input type="checkbox" id="set-desktop"> Báo ra màn hình máy tính khi đang mở tab khác</label>
+        <table class="events">
+          <thead><tr><th>Loại</th><th>Hiện</th><th>Kêu</th><th>Tiếng</th><th></th></tr></thead>
+          <tbody id="set-events"></tbody>
+        </table>
+
+        <h3>Phím tắt</h3>
+        <ul class="keys">
+          <li><kbd>1</kbd>–<kbd>7</kbd> Bay tới từng nhà</li>
+          <li><kbd>A</kbd> Duyệt nhanh việc đầu tiên</li>
+          <li><kbd>N</kbd> Thông báo</li>
+          <li><kbd>T</kbd> Tổng quan</li>
+          <li><kbd>H</kbd> Báo cáo hôm nay</li>
+          <li><kbd>L</kbd> Nhật ký</li>
+          <li><kbd>Esc</kbd> Đóng bảng đang mở</li>
+        </ul>
       </div>
     </div>
   </div>
@@ -233,8 +241,8 @@
     <div id="detailbody"></div>
   </aside>
 
-  <footer id="credits">Kéo để di chuyển · cuộn để phóng to · bấm nhân vật, nhà hay việc để xem chi tiết · chọn nhân vật rồi bấm một nhà để giao việc thật · phím 1–7 xem từng nhà, A duyệt nhanh, N thông báo, H hôm nay</footer>
+  <footer id="credits">Kéo để di chuyển · cuộn để phóng to · bấm nhân vật, nhà hay việc để xem chi tiết · chọn nhân vật rồi bấm một nhà để giao việc thật · phím tắt xem trong Cài đặt</footer>
 
-  <script type="module" src="app.js"></script>
+  <script type="module" src="app.js?v=nut-cai-dat"></script>
 </body>
 </html>

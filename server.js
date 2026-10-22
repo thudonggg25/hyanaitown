@@ -608,7 +608,11 @@ const server = http.createServer(async (req, res) => {
   if (rel === 'town.config.json') { res.writeHead(200, { 'Content-Type': MIME['.json'] }); return res.end(JSON.stringify(config)); }
   fs.readFile(file, (err, buf) => {
     if (err) { res.writeHead(404); return res.end('Không có'); }
-    res.writeHead(200, { 'Content-Type': MIME[path.extname(file)] || 'application/octet-stream' });
+    const ext = path.extname(file);
+    const h = { 'Content-Type': MIME[ext] || 'application/octet-stream' };
+    // HTML/JS/CSS luôn hỏi lại máy chủ để không dính bản cũ trong bộ nhớ đệm trình duyệt
+    if (['.html', '.js', '.css', '.mjs'].includes(ext)) h['Cache-Control'] = 'no-cache';
+    res.writeHead(200, h);
     res.end(buf);
   });
 });
