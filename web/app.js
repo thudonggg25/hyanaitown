@@ -10,6 +10,7 @@ import { OrbitControls } from './vendor/addons/OrbitControls.js';
 import { CSS2DRenderer, CSS2DObject } from './vendor/addons/CSS2DRenderer.js';
 import * as sound from './sound.js';
 import { initSettings, toggleSettings } from './settings.js';
+import { initLayout, resetLayout } from './layout.js';
 import { initCalmRoom, onChat, openRoom, openTask, openFullLog, openModal, closeModal } from './phong-calm.js';
 
 const $ = s => document.querySelector(s);
@@ -675,7 +676,7 @@ function renderChat() {
     <div class="ask-b"><button class="btn-ok" data-decide="${esc(a.id)}" data-ok="1">Duyệt</button><button class="btn-no" data-decide="${esc(a.id)}" data-ok="0">Từ chối</button></div></li>`).join('')
     + (asks.length > 3 ? `<li class="more" data-act-open="overview">+${asks.length - 3} việc khác chờ duyệt…</li>` : '');
   const box = $('#chat-msgs'), atEnd = box.scrollHeight - box.scrollTop - box.clientHeight < 30;
-  const items = state.log.slice(-25);
+  const items = state.log.slice(-100);
   box.innerHTML = items.length ? items.map(e => {
     const tid = (e.text.match(/\b[A-Z]{2,5}-\d{3,}\b/) || [])[0];
     return `<div class="msg ${esc(e.kind)}"${tid ? ` data-task="${tid}"` : ''} title="${esc(e.text)}"><i class="av" style="background:${esc(colorOf(e.agent))}">${esc(nameOf(e.agent).slice(0, 1))}</i>
@@ -868,6 +869,7 @@ document.querySelectorAll('[data-act]').forEach(b => b.addEventListener('click',
 
 // Bảng cài đặt thông báo; icon loa trên thanh công cụ đổi theo tắt/mở tiếng
 initSettings();
+initLayout();
 initCalmRoom({
   getState: () => state, nameOf, toast,
   onUnread: n => { $('#calm-badge').textContent = n; $('#calm-badge').classList.toggle('hidden', !n); },
@@ -890,6 +892,7 @@ renderNotifs();
 $('#set-drift').onchange = () => toggles.rotate();
 $('#set-names').onchange = () => toggles.names();
 $('#set-bubbles').onchange = () => toggles.bubbles();
+$('#set-layout').onclick = () => { resetLayout(); toggleSettings(false); };
 $('#set-home').onclick = () => { toggles.home(); toggleSettings(false); };
 // Thanh trượt: phần đã kéo tô màu xanh
 const fill = el => el.style.setProperty('--v', el.value + '%');
