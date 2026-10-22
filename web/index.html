@@ -15,30 +15,47 @@
 <body>
   <div id="scene"></div>
 
-  <!-- Cột trái: tên thị trấn, lưới nút, âm thanh nhanh -->
-  <div id="leftcol">
-    <div class="card brand">
-      <div class="title" id="title">Thị trấn AI agent</div>
-      <div class="sub"><span id="conn" class="dot off"></span><span id="subtitle">Đang kết nối…</span></div>
-    </div>
-    <nav class="card tools">
-      <button data-act="calm" id="btn-calm" class="tile wide calm-btn" title="Giao việc và đọc trả lời của Calm"><img src="assets/ui/icon-mail.webp" alt=""><span>Phòng Calm</span><b id="calm-badge" class="badge hidden">0</b></button>
-      <button data-act="rotate" class="tile" title="Camera tự lướt chậm qua thị trấn"><img src="assets/ui/icon-drift.webp" alt=""><span>Lướt</span></button>
-      <button data-act="names" class="tile on" title="Hiện / ẩn tên"><img src="assets/ui/icon-name.webp" alt=""><span>Tên</span></button>
-      <button data-act="bubbles" class="tile on" title="Hiện / ẩn bong bóng"><img src="assets/ui/icon-bubble.webp" alt=""><span>Bong bóng</span></button>
-      <button data-act="home" class="tile" title="Xem toàn cảnh"><img src="assets/ui/icon-home.webp" alt=""><span>Toàn cảnh</span></button>
-      <button data-act="overview" class="tile on green"><img src="assets/ui/icon-map.webp" alt=""><span>Tổng quan</span></button>
-      <button data-act="log" class="tile on lilac"><img src="assets/ui/icon-log.webp" alt=""><span>Nhật ký</span></button>
-      <button data-act="demo" id="btn-demo" class="tile" title="Chạy thử với việc giả"><img src="assets/ui/icon-play.webp" alt=""><span>Tự chạy</span></button>
-      <button data-act="sound" id="btn-sound" class="tile" title="Âm thanh và thông báo"><img src="assets/ui/icon-sound.webp" alt=""><span>Âm thanh</span></button>
-      <button data-act="approve1" id="btn-approve1" class="tile primary" title="Duyệt việc đầu tiên đang chờ"><img src="assets/ui/icon-ok.webp" alt=""><span>1 bước duyệt</span></button>
-    </nav>
-    <div id="soundpop" class="card pop hidden">
-      <div class="pop-head"><h2>Âm thanh</h2><label class="switch"><input type="checkbox" id="q-on"><i></i><span>Bật</span></label></div>
-      <div class="qrow"><img src="assets/ui/icon-music.webp" alt=""><span class="lbl">Nhạc nền</span><input type="range" id="q-music" min="0" max="100"><b id="q-music-v">0%</b><button class="pill" id="q-music-try">▶ Nghe thử</button></div>
-      <div class="qrow"><img src="assets/ui/icon-sound.webp" alt=""><span class="lbl">Hiệu ứng</span><input type="range" id="q-sfx" min="0" max="100"><b id="q-sfx-v">0%</b><button class="pill" id="q-sfx-try">▶ Nghe thử</button></div>
-      <button class="link-btn" id="q-more">Cài đặt thông báo chi tiết, nhạc của bạn ›</button>
-    </div>
+  <!-- HUD rải đều 4 cạnh, giữa để trống cho bản đồ -->
+  <!-- Trên trái: biển tên -->
+  <div id="brand" class="wood plaque">
+    <div class="title" id="title">Thị trấn AI agent</div>
+    <div class="sub"><span id="conn" class="dot off"></span><span id="subtitle">Đang kết nối…</span></div>
+  </div>
+
+  <!-- Cạnh trên: hàng nút xem -->
+  <nav id="topbar" class="wood hud">
+    <button data-act="rotate" class="tile" title="Camera tự lướt chậm qua thị trấn"><img src="assets/ui/icon-drift.webp" alt=""><span>Lướt</span></button>
+    <button data-act="names" class="tile on" title="Hiện / ẩn tên"><img src="assets/ui/icon-name.webp" alt=""><span>Tên</span></button>
+    <button data-act="bubbles" class="tile on" title="Hiện / ẩn bong bóng"><img src="assets/ui/icon-bubble.webp" alt=""><span>Bong bóng</span></button>
+    <button data-act="home" class="tile" title="Xem toàn cảnh"><img src="assets/ui/icon-home.webp" alt=""><span>Toàn cảnh</span></button>
+    <button data-act="sound" id="btn-sound" class="tile" title="Âm thanh và thông báo"><img src="assets/ui/icon-sound.webp" alt=""><span>Âm thanh</span></button>
+  </nav>
+
+  <!-- Cạnh trái: thanh dọc mở bảng -->
+  <nav id="leftbar" class="wood hud vbar">
+    <button data-act="calm" id="btn-calm" class="tile calm-btn" title="Phòng Calm: giao việc và đọc trả lời"><img src="assets/ui/icon-mail.webp" alt=""><span>Calm</span><b id="calm-badge" class="badge hidden">0</b></button>
+    <button data-act="overview" class="tile" title="Tổng quan: chờ duyệt, bảng việc"><img src="assets/ui/icon-map.webp" alt=""><span>Tổng quan</span></button>
+    <button data-act="log" class="tile" title="Nhật ký việc"><img src="assets/ui/icon-log.webp" alt=""><span>Nhật ký</span></button>
+    <button data-act="demo" id="btn-demo" class="tile" title="Chạy thử với việc giả"><img src="assets/ui/icon-play.webp" alt=""><span>Tự chạy</span></button>
+    <button data-act="approve1" id="btn-approve1" class="tile primary" title="Duyệt việc đầu tiên đang chờ"><img src="assets/ui/icon-ok.webp" alt=""><span>1 bước duyệt</span></button>
+  </nav>
+
+  <!-- Cạnh phải: bộ đếm gọn, bấm để mở Tổng quan -->
+  <nav id="counters" class="wood hud vbar" title="Bấm để mở Tổng quan">
+    <button class="cnt run" data-act="overview"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M10 8l6 4-6 4z"/></svg><b id="c-running">0</b><span>Đang chạy</span></button>
+    <button class="cnt next" data-act="overview"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 7v5l3 2"/></svg><b id="c-queued">0</b><span>Sắp làm</span></button>
+    <button class="cnt warn" data-act="overview"><img src="assets/ui/icon-bell.webp" alt=""><b id="c-waiting">0</b><span>Chờ duyệt</span></button>
+    <button class="cnt bad" data-act="overview"><img src="assets/ui/icon-warn.webp" alt=""><b id="c-error">0</b><span>Lỗi</span></button>
+  </nav>
+
+  <!-- Cạnh dưới: dòng nhật ký mới nhất -->
+  <button id="ticker" class="wood hud" data-act="log" title="Bấm để mở Nhật ký"><img src="assets/ui/icon-log.webp" alt=""><span id="ticker-txt">Chưa có nhật ký.</span></button>
+
+  <div id="soundpop" class="card pop hidden">
+    <div class="pop-head"><h2>Âm thanh</h2><label class="switch"><input type="checkbox" id="q-on"><i></i><span>Bật</span></label><button class="close" id="soundpop-close" aria-label="Đóng">×</button></div>
+    <div class="qrow"><img src="assets/ui/icon-music.webp" alt=""><span class="lbl">Nhạc nền</span><input type="range" id="q-music" min="0" max="100"><b id="q-music-v">0%</b><button class="pill" id="q-music-try">▶ Nghe thử</button></div>
+    <div class="qrow"><img src="assets/ui/icon-sound.webp" alt=""><span class="lbl">Hiệu ứng</span><input type="range" id="q-sfx" min="0" max="100"><b id="q-sfx-v">0%</b><button class="pill" id="q-sfx-try">▶ Nghe thử</button></div>
+    <button class="link-btn" id="q-more">Cài đặt thông báo chi tiết, nhạc của bạn ›</button>
   </div>
 
   <div id="settings-wrap" class="modal-wrap hidden">
@@ -167,8 +184,9 @@
   <div id="toasts"></div>
   <div id="errbox" class="card hidden"></div>
 
-  <aside id="overview" class="panel">
+  <aside id="overview" class="panel drawer hidden">
     <h2>Tổng quan</h2>
+    <button class="close" data-drawer="overview" aria-label="Đóng">×</button>
     <div class="stats">
       <div class="stat run"><span class="ic"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M10 8l6 4-6 4z"/></svg></span><b id="s-running">0</b><span>Đang chạy</span></div>
       <div class="stat next"><span class="ic"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 7v5l3 2"/></svg></span><b id="s-queued">0</b><span>Sắp làm</span></div>
@@ -181,8 +199,9 @@
     <ul id="board" class="list compact"></ul>
   </aside>
 
-  <aside id="log" class="panel">
+  <aside id="log" class="panel drawer hidden">
     <h2>Nhật ký việc</h2>
+    <button class="close" data-drawer="log" aria-label="Đóng">×</button>
     <button class="expand" id="log-full" title="Xem nhật ký đầy đủ">Xem đầy đủ</button>
     <div id="logbody"></div>
   </aside>

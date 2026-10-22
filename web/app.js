@@ -534,6 +534,9 @@ function renderOverview(s) {
   $('#s-queued').textContent = c('queued');
   $('#s-waiting').textContent = c('waiting_approval') + s.approvals.length;
   $('#s-error').textContent = c('error') + c('rejected');
+  for (const k of ['running', 'queued', 'waiting', 'error']) $('#c-' + k).textContent = $('#s-' + k).textContent;
+  $('#counters .warn').classList.toggle('alert', $('#s-waiting').textContent !== '0');
+  $('#counters .bad').classList.toggle('alert', $('#s-error').textContent !== '0');
 
   const items = [
     ...s.approvals.map(q => ({ id: q.id, title: q.summary, who: q.agent, kind: 'Xin quyền dùng ' + q.tool, ts: q.ts })),
@@ -564,6 +567,8 @@ function renderLog(log) {
     html += `<div class="e ${esc(e.kind)}${tid ? ' link' : ''}"${tid ? ` data-task="${tid}"` : ''}><i class="d" style="background:${esc(colorOf(e.agent))}"></i><time>${hhmm(e.ts)}</time><span class="who">${esc(nameOf(e.agent))}</span><span class="txt">${esc(e.text)}</span></div>`;
   }
   $('#logbody').innerHTML = html || '<div class="empty">Chưa có nhật ký.</div>';
+  const last = log[log.length - 1];
+  $('#ticker-txt').textContent = last ? `${hhmm(last.ts)} · ${nameOf(last.agent)} · ${last.text}` : 'Chưa có nhật ký.';
 }
 
 const stateText = { idle: 'Rảnh', working: 'Đang làm', waiting: 'Chờ bạn', done: 'Vừa xong', error: 'Lỗi' };
@@ -649,17 +654,17 @@ const toggles = {
   names: b => { b.classList.toggle('on', !document.body.classList.toggle('hide-names')); },
   bubbles: b => { b.classList.toggle('on', !document.body.classList.toggle('hide-bubbles')); },
   home: () => { camera.position.set(0, 0, 200); camera.zoom = 1; camera.updateProjectionMatrix(); controls.target.set(0, 0, 0); },
-  overview: b => b.classList.toggle('on', !$('#overview').classList.toggle('hidden')),
-  log: b => b.classList.toggle('on', !$('#log').classList.toggle('hidden')),
+  overview: () => drawer('overview'),
+  log: () => drawer('log'),
   demo: () => post('/api/demo', { on: !state?.settings.demo }),
   sound: b => {
     const pop = $('#soundpop'), open = pop.classList.toggle('hidden') === false;
     b.classList.toggle('on', open);
     // đặt thẻ ngay dưới nút Âm thanh, mũi nhọn chỉ vào nút
-    const r = b.getBoundingClientRect(), base = $('#leftcol').getBoundingClientRect();
-    const left = Math.max(0, Math.min(r.left + r.width / 2 - base.left - 165, base.width - 330));
-    pop.style.left = left + 'px';
-    pop.style.setProperty('--arrow', (r.left + r.width / 2 - base.left - left - 8) + 'px');
+    const r = b.getBoundingClientRect(), w = Math.min(330, innerWidth - 16);
+    const left = Math.max(8, Math.min(r.left + r.width / 2 - w / 2, innerWidth - w - 8));
+    pop.style.left = left + 'px'; pop.style.top = (r.bottom + 12) + 'px'; pop.style.width = w + 'px';
+    pop.style.setProperty('--arrow', (r.left + r.width / 2 - left - 8) + 'px');
   },
   calm: () => openRoom(),
   approve1: () => {
@@ -696,9 +701,20 @@ $('#q-sfx-try').onclick = () => sound.playVoice(sound.settings.events.alert.voic
 $('#q-more').onclick = () => { $('#soundpop').classList.add('hidden'); $('#btn-sound').classList.remove('on'); toggleSettings(true); };
 sound.onChange(syncSoundIcon);
 syncSoundIcon();
-if (innerWidth < 760) {
-  for (const k of ['overview', 'log']) { $('#' + k).classList.add('hidden'); document.querySelector(`[data-act=${k}]`).classList.remove('on'); }
+// Bảng lớn (Tổng quan, Nhật ký) chỉ mở khi bấm, đóng bằng ×, bấm lại nút hoặc Esc.
+// Điện thoại chỉ mở một bảng một lúc để bản đồ còn chỗ.
+function drawer(id, force) {
+  const el = $('#' + id), open = force ?? el.classList.contains('hidden');
+  el.classList.toggle('hidden', !open);
+  document.querySelectorAll(`[data-act=${id}]`).forEach(b => b.classList.toggle('on', open));
+  if (open && innerWidth < 900) for (const o of ['overview', 'log']) if (o !== id) drawer(o, false);
 }
+document.querySelectorAll('[data-drawer]').forEach(b => b.onclick = () => drawer(b.dataset.drawer, false));
+$('#soundpop-close').onclick = () => { $('#soundpop').classList.add('hidden'); $('#btn-sound').classList.remove('on'); };
+addEventListener('keydown', e => {
+  if (e.key !== 'Escape' || document.querySelector('.modal-wrap:not(.hidden)')) return;
+  drawer('overview', false); drawer('log', false); $('#soundpop-close').onclick();
+});
 
 // Bấm vào nhân vật hoặc ngôi nhà để xem chi tiết (chỉ tính phần có hình, bỏ nền trong suốt)
 const ray = new THREE.Raycaster();
