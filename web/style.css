@@ -736,3 +736,26 @@ body:has(#log:not(.hidden)) #chat, body:has(#report:not(.hidden)) #chat { displa
   .badge.warn { min-width: 22px; height: 22px; line-height: 18px; font-size: 12px; top: -8px; right: -8px; }
   .ico { width: 22px; height: 22px; }
 }
+
+/* ---------- Trên trái: biển tên + bộ đếm cùng một hàng, sát mép trên ---------- */
+#topleft { position: fixed; top: 0; left: 10px; z-index: 6; display: flex; align-items: stretch; gap: 8px; max-width: calc(100% - 200px); }
+#topleft #brand, #topleft #counters { position: static; transform: none; top: auto; left: auto; right: auto; border-top-left-radius: 0; border-top-right-radius: 0; }
+#topleft #brand { min-width: 0; max-width: 300px; flex: 0 1 auto; padding-top: 6px; }
+#topleft #counters { align-items: center; flex: none; }
+/* Trên phải: chuông + nút Cài đặt */
+#topbar { left: auto; right: 10px; top: 0; transform: none; border-top-left-radius: 0; border-top-right-radius: 0; }
+#topbar .tile .ico { stroke: #4a2f17; }
+#leftbar { top: calc(50% + 10px); }
+#toasts { top: 76px; }
+#settings .keys { list-style: none; margin: 4px 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 6px 14px; font-size: 14px; }
+#settings kbd { display: inline-block; min-width: 22px; padding: 1px 6px; margin-right: 4px; text-align: center; font: 800 12.5px Nunito, sans-serif; background: #fffdf8; border: 1.5px solid var(--edge); border-bottom-width: 3px; border-radius: 6px; }
+@media (max-width: 1250px) { #topbar .tile { width: 72px; height: 60px; } #topbar .tile span { display: block; } }
+@media (max-width: 900px) {
+  #topleft { left: 6px; gap: 4px; max-width: calc(100% - 112px); flex-wrap: wrap; }
+  #topleft #brand { max-width: 100%; flex-basis: 100%; }
+  #topbar { right: 6px; padding: 4px; }
+  #topbar .tile { width: 44px; height: 42px; }
+  #topbar .tile span { display: none; }
+  #leftbar { top: 110px; }
+  #toasts { top: 110px; }
+}

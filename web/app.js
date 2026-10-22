@@ -847,23 +847,15 @@ document.addEventListener('click', e => {
 
 let drift = false;
 const toggles = {
-  rotate: b => { drift = !drift; b.classList.toggle('on', drift); b.querySelector('span').textContent = drift ? 'Dừng lướt' : 'Lướt'; },
-  names: b => { b.classList.toggle('on', !document.body.classList.toggle('hide-names')); },
-  bubbles: b => { b.classList.toggle('on', !document.body.classList.toggle('hide-bubbles')); },
+  rotate: () => { drift = !drift; $('#set-drift').checked = drift; },
+  names: () => { $('#set-names').checked = !document.body.classList.toggle('hide-names'); },
+  bubbles: () => { $('#set-bubbles').checked = !document.body.classList.toggle('hide-bubbles'); },
   home: () => { camera.position.set(0, 0, 200); camera.zoom = 1; camera.updateProjectionMatrix(); controls.target.set(0, 0, 0); },
   overview: () => drawer('overview'),
   report: () => drawer('report'),
   log: () => drawer('log'),
   demo: () => post('/api/demo', { on: !state?.settings.demo }),
-  sound: b => {
-    const pop = $('#soundpop'), open = pop.classList.toggle('hidden') === false;
-    b.classList.toggle('on', open);
-    // đặt thẻ ngay dưới nút Âm thanh, mũi nhọn chỉ vào nút
-    const r = b.getBoundingClientRect(), w = Math.min(330, innerWidth - 16);
-    const left = Math.max(8, Math.min(r.left + r.width / 2 - w / 2, innerWidth - w - 8));
-    pop.style.left = left + 'px'; pop.style.top = (r.bottom + 12) + 'px'; pop.style.width = w + 'px';
-    pop.style.setProperty('--arrow', (r.left + r.width / 2 - left - 8) + 'px');
-  },
+  settings: () => toggleSettings(true),
   calm: () => openRoom(),
   notifs: () => { drawer('notifs'); renderNotifs(); },
   approve1: () => {
@@ -894,25 +886,16 @@ $('#nf-list').addEventListener('click', e => {
   if (n.task) { focusTask(n.task); openTask(n.task); } else if (n.kind === 'calm') openRoom(); else if (n.kind === 'alert') drawer('overview', true);
 });
 renderNotifs();
-// Thẻ âm thanh nhanh dưới lưới nút
-const fill = el => el.style.setProperty('--v', el.value + '%');
-const syncSoundIcon = () => {
-  const st = sound.settings;
-  $('#btn-sound img').src = UI + (st.muted ? 'icon-mute.webp' : 'icon-sound.webp');
-  $('#q-on').checked = !st.muted;
-  $('#q-music').value = Math.round(st.music * 100); $('#q-music-v').textContent = $('#q-music').value + '%'; fill($('#q-music'));
-  $('#q-sfx').value = Math.round(st.sfx * 100); $('#q-sfx-v').textContent = $('#q-sfx').value + '%'; fill($('#q-sfx'));
-};
+// Cài đặt > Hiển thị
+$('#set-drift').onchange = () => toggles.rotate();
+$('#set-names').onchange = () => toggles.names();
+$('#set-bubbles').onchange = () => toggles.bubbles();
+$('#set-home').onclick = () => { toggles.home(); toggleSettings(false); };
 // Thanh trượt: phần đã kéo tô màu xanh
+const fill = el => el.style.setProperty('--v', el.value + '%');
 document.addEventListener('input', e => { if (e.target.type === 'range') fill(e.target); });
-$('#q-on').onchange = e => sound.set('muted', !e.target.checked);
-$('#q-music').oninput = e => { sound.set('music', e.target.value / 100); if (!sound.settings.musicOn) sound.set('musicOn', true); };
-$('#q-sfx').oninput = e => sound.set('sfx', e.target.value / 100);
-$('#q-music-try').onclick = () => { if (!sound.settings.musicOn) sound.set('musicOn', true); sound.playVoice('dan'); };
-$('#q-sfx-try').onclick = () => sound.playVoice(sound.settings.events.alert.voice);
-$('#q-more').onclick = () => { $('#soundpop').classList.add('hidden'); $('#btn-sound').classList.remove('on'); toggleSettings(true); };
-sound.onChange(syncSoundIcon);
-syncSoundIcon();
+const fillAll = () => document.querySelectorAll('#settings input[type=range]').forEach(fill);
+sound.onChange(fillAll); fillAll();
 // Bảng lớn (Tổng quan, Nhật ký) chỉ mở khi bấm, đóng bằng ×, bấm lại nút hoặc Esc.
 // Điện thoại chỉ mở một bảng một lúc để bản đồ còn chỗ.
 function drawer(id, force) {
@@ -923,10 +906,9 @@ function drawer(id, force) {
   if (open && innerWidth < 900) for (const o of ['overview', 'log', 'notifs', 'report']) if (o !== id) drawer(o, false);
 }
 document.querySelectorAll('[data-drawer]').forEach(b => b.onclick = () => drawer(b.dataset.drawer, false));
-$('#soundpop-close').onclick = () => { $('#soundpop').classList.add('hidden'); $('#btn-sound').classList.remove('on'); };
 addEventListener('keydown', e => {
   if (e.key !== 'Escape' || document.querySelector('.modal-wrap:not(.hidden)')) return;
-  drawer('overview', false); drawer('log', false); drawer('notifs', false); drawer('report', false); $('#soundpop-close').onclick();
+  drawer('overview', false); drawer('log', false); drawer('notifs', false); drawer('report', false);
 });
 // Phím tắt: 1–7 bay tới từng nhà, A duyệt nhanh, N thông báo, T tổng quan, H hôm nay, L nhật ký
 addEventListener('keydown', e => {
