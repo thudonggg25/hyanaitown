@@ -123,6 +123,17 @@
     </div>
   </div>
 
+  <!-- Xác nhận giao việc thật (chọn nhân vật rồi bấm nhà) -->
+  <div id="send-wrap" class="modal-wrap hidden">
+    <div class="backdrop" data-close="send-wrap"></div>
+    <div class="modal mid">
+      <h2>Giao việc thật?</h2>
+      <button class="close" data-close="send-wrap" aria-label="Đóng">×</button>
+      <div id="send-body" class="mbody"></div>
+      <div class="mfoot"><button data-close="send-wrap">Thôi</button>&nbsp;<button id="send-ok">Chạy thật</button></div>
+    </div>
+  </div>
+
   <!-- Chi tiết một việc -->
   <div id="task-wrap" class="modal-wrap hidden">
     <div class="backdrop" data-close="task-wrap"></div>
@@ -181,7 +192,7 @@
     <div id="detailbody"></div>
   </aside>
 
-  <footer id="credits">Kéo để di chuyển · cuộn để phóng to · bấm nhân vật, nhà hay việc để xem chi tiết</footer>
+  <footer id="credits">Kéo để di chuyển · cuộn để phóng to · bấm nhân vật, nhà hay việc để xem chi tiết · chọn nhân vật rồi bấm một nhà để giao việc thật</footer>
 
   <script type="module" src="app.js"></script>
 </body>

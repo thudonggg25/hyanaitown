@@ -4,7 +4,9 @@
   "port": 4545,
   "taskPrefix": "HLP",
   "approvalHoldSeconds": 60,
-  "calm": { "dir": "C:/Users/hyang/Calm" },
+  "calm": {
+    "dir": "C:/Users/hyang/Calm"
+  },
   "boss": {
     "id": "calm",
     "name": "Calm",
@@ -120,5 +122,36 @@
         "qa/"
       ]
     }
-  ]
+  ],
+  "routines": [
+    {
+      "skill": "nhan-feedback",
+      "title": "Nhận feedback",
+      "agent": "calm",
+      "house": "tiep-nhan",
+      "when": "08:00 mỗi ngày"
+    },
+    {
+      "skill": "kiem-tra-dinh-ky",
+      "title": "Kiểm tra định kỳ",
+      "agent": "calm",
+      "house": "calm",
+      "when": "2 giờ một lần, 08:00–22:00"
+    },
+    {
+      "skill": "bao-cao-ngay",
+      "title": "Báo cáo ngày",
+      "agent": "calm",
+      "house": "calm",
+      "when": "17:30 mỗi ngày"
+    },
+    {
+      "skill": "tong-ket-tuan",
+      "title": "Tổng kết tuần",
+      "agent": "calm",
+      "house": "calm",
+      "when": "Thứ Hai 08:30"
+    }
+  ],
+  "dispatchPermissionMode": "acceptEdits"
 }

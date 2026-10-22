@@ -257,6 +257,7 @@ async function buildHouse(houseId, roomIds, names) {
   mesh.position.set(wx(plot.x), wy(plot.y) - hh * 0.17, depth(plot.y));
   mesh.renderOrder = Math.round(plot.y * 10);
   mesh.userData.agentId = roomIds[0];
+  mesh.userData.house = houseId;
   mesh.userData.mask = alphaMask(tex);
   sign.position.set(0, hh * 1.02, 0);
   mesh.add(sign);
@@ -587,11 +588,44 @@ function renderDetail(id) {
     <div class="ag-sec"><h4>Việc gần đây</h4>
       ${tasks.length ? '<ul>' + tasks.map(t => `<li class="link" data-task="${esc(t.id)}"><span class="ck">${t.status === 'done' || t.status === 'approved' ? '✔' : '•'}</span><b>${esc(t.id)}</b><span class="tt">${esc(t.title)}</span><span class="tag ${t.status}">${statusText[t.status] || t.status}</span></li>`).join('') + '</ul>' : '<div class="empty">Chưa có.</div>'}
     </div>
+    ${routinesHtml(a)}
+    <div class="ag-sec"><h4>Giao việc</h4><div class="empty">${picked === a.id ? 'Đã chọn. Bấm vào một ngôi nhà để giao việc thật.' : 'Bấm nhân vật để chọn, rồi bấm một nhà để đi giao việc.'}</div></div>
     <div class="ag-sec"><details><summary>Thao tác vừa rồi, tệp và kỹ năng</summary>
       ${a.tools.length ? '<ul style="margin-top:6px">' + a.tools.slice(0, 8).map(t => `<li><time>${hhmm(t.ts)}</time> ${esc(t.text)}</li>`).join('') + '</ul>' : '<div class="empty">Chưa có thao tác.</div>'}
       <div class="chips">${[...a.files, ...a.skills].map(f => `<span class="chip">${esc(f)}</span>`).join('')}</div>
     </details></div>`;
 }
+// Lịch định kỳ của nhân vật (town.config.json → routines)
+function routinesHtml(a) {
+  const rs = (state.routines || []).filter(r => (r.agent || state.boss) === a.id || r.house === a.id);
+  if (!rs.length) return '';
+  return `<div class="ag-sec routine"><h4>Lịch định kỳ</h4><ul>${rs.map(r => `<li><time>${esc(r.when || '')}</time><span class="tt">${esc(r.title || '/' + r.skill)}${(r.agent || state.boss) !== a.id ? ` <i>(${esc(nameOf(r.agent || state.boss))} sang)</i>` : ''}</span></li>`).join('')}</ul></div>`;
+}
+
+// ---------- Chọn nhân vật rồi bấm nhà để giao việc thật ----------
+let picked = null, pendingSend = null;
+function setPicked(id) {
+  if (picked && people[picked]) people[picked].nameTag.element.classList.remove('picked');
+  picked = id;
+  if (id && people[id]) people[id].nameTag.element.classList.add('picked');
+}
+function askSend(agentId, houseAgent) {
+  const who = state.agents.find(x => x.id === agentId), where = state.agents.find(x => x.id === houseAgent);
+  const plan = state.dispatch?.plans?.[houseAgent] || {};
+  pendingSend = { agent: agentId, house: houseAgent };
+  $('#send-body').innerHTML = `<p><b>${esc(who?.name)}</b> sẽ đi sang <b>${esc(where?.name)}</b> và chạy Claude Code thật (<code>claude -p</code>) trong thư mục đội Calm${state.calm?.dir ? ` (<code>${esc(state.calm.dir)}</code>)` : ''}.</p>
+    <p><b>${esc(plan.title || 'Việc mới')}</b></p><pre>${esc(plan.prompt || '')}</pre>`;
+  openModal('send-wrap');
+}
+$('#send-ok').onclick = async () => {
+  closeModal('send-wrap');
+  if (!pendingSend) return;
+  const r = await post('/api/dispatch', { ...pendingSend, confirm: true });
+  if (r.ok) toast('handoff', nameOf(pendingSend.agent), `Đã giao ${r.task}`, () => openTask(r.task));
+  else showErr(nameOf(pendingSend.agent), r.error || 'Không giao được việc');
+  pendingSend = null; setPicked(null);
+};
+
 function openDetail(id) {
   selected = id;
   $('#detail').classList.remove('hidden');
@@ -682,7 +716,14 @@ renderer.domElement.addEventListener('pointerdown', e => { downAt = [e.clientX, 
 renderer.domElement.addEventListener('pointerup', e => {
   if (!downAt || Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]) > 6) return;
   const hit = pick(e);
-  if (hit) openDetail(hit.object.userData.agentId);
+  if (!hit) return setPicked(null);
+  const id = hit.object.userData.agentId;
+  if (hit.object.userData.house) {
+    if (picked) return askSend(picked, id);
+    return openDetail(id);
+  }
+  setPicked(picked === id ? null : id);
+  openDetail(id);
 });
 let hoverAt = 0;
 renderer.domElement.addEventListener('pointermove', e => {

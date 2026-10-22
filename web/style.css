@@ -507,3 +507,8 @@ body:has(#detail:not(.hidden)) #credits { display: none; }
   .tile, .tile.calm-btn, .tile.primary, .tile.wide { padding: 5px 0; min-height: 34px; border-radius: 9px; }
   .tile img, .tile.wide img { width: 22px; height: 22px; }
 }
+
+/* Nhân vật đang được chọn để giao việc */
+.label3d.picked { visibility: visible !important; background: #ffe27a; color: #4a3210; box-shadow: 0 0 0 3px #f2b134, 0 0 14px #ffd04d; }
+#send-body pre { white-space: pre-wrap; background: #fbf5ea; border-radius: 8px; padding: 8px 10px; font-size: 13px; }
+.routine li { display: flex; gap: 8px; } .routine time { min-width: 0; color: #8a6d4a; }

@@ -9,6 +9,7 @@ const fs = require('fs');
 const path = require('path');
 const { runDemo } = require('./demo');
 const { createCalm } = require('./calm');
+const { createDispatch, routineFor } = require('./dispatch');
 
 const ROOT = __dirname;
 const config = JSON.parse(fs.readFileSync(path.join(ROOT, 'town.config.json'), 'utf8'));
@@ -104,6 +105,8 @@ const calm = createCalm({ DATA, config, onChange: ev => {
   for (const res of clients) res.write(data);
   if (ev.type === 'status') push();
 } });
+const dispatch = createDispatch({ config, calmDir: () => calm.status().dir, newTask, setTask, setAgent, addLog, push: () => push(), agents });
+let routineRun = null; // { routine, session } lượt theo lịch đang chạy
 function snapshot() {
   return {
     title: config.title, subtitle: config.subtitle, boss: config.boss.id,
@@ -113,6 +116,7 @@ function snapshot() {
     calm: calm.status(),
     approvals: approvals.map(({ resolve, timer, ...rest }) => rest),
     log: log.slice(-150), settings,
+    routines: config.routines || [], dispatch: { plans: dispatch.plans(), busy: dispatch.busy() },
   };
 }
 let pushTimer = null;
@@ -173,6 +177,15 @@ function handleHook(ev) {
     case 'UserPromptSubmit': {
       // Thông báo nội bộ khi subagent chạy nền xong, không phải yêu cầu của người dùng
       if (/^\s*<task-notification/.test(ev.prompt || '')) break;
+      const r = routineFor(config, ev.prompt);
+      if (r) {
+        // Lượt chạy theo lịch: Calm đi bộ sang nhà phụ trách
+        routineRun = { routine: r, session: ev.session_id };
+        const house = agents[r.house] ? r.house : boss;
+        setAgent(boss, { state: 'working', at: house, bubble: `Lịch: ${r.title || '/' + r.skill}` });
+        addLog(boss, `Bắt đầu lịch định kỳ ${r.title || '/' + r.skill}`, 'notify');
+        break;
+      }
       const p = String(ev.prompt || '').replace(/\s+/g, ' ').slice(0, 80);
       setAgent(boss, { state: 'working', bubble: `Nhận yêu cầu: ${p}` });
       addLog(boss, `Nhận yêu cầu: ${p}`);
@@ -267,6 +280,12 @@ function handleHook(ev) {
       setAgent(boss, { state: 'waiting', bubble: String(ev.message || 'Đang chờ bạn').slice(0, 70) });
       break;
     case 'Stop':
+      if (routineRun && (!routineRun.session || routineRun.session === ev.session_id)) {
+        addLog(boss, `Xong lịch ${routineRun.routine.title || '/' + routineRun.routine.skill}`, 'done');
+        routineRun = null;
+        setAgent(boss, { state: 'idle', at: boss, bubble: 'Xong lịch, về nhà' });
+        break;
+      }
       setAgent(boss, { state: 'idle', bubble: 'Xong lượt, chờ việc' });
       addLog(boss, 'Xong một lượt làm việc', 'done');
       break;
@@ -427,6 +446,12 @@ const api = {
   'POST /api/chat/stop': (req, res) => { calm.stop(); sendJson(res, 200, { ok: true }); },
   'POST /api/chat/new': (req, res) => sendJson(res, 200, calm.newSession()),
   'POST /api/chat/dir': async (req, res) => sendJson(res, 200, calm.setDir((await readBody(req)).dir)),
+  // Giao việc thật: chọn nhân vật rồi bấm nhà (trang đã hỏi xác nhận trước)
+  'POST /api/dispatch': async (req, res) => {
+    const { agent, house, confirm } = await readBody(req);
+    if (confirm !== true) return sendJson(res, 400, { ok: false, error: 'Cần xác nhận trước khi chạy' });
+    sendJson(res, 200, dispatch.launch({ agent: String(agent || ''), house: String(house || '') }));
+  },
   'GET /api/log': (req, res) => sendJson(res, 200, log),
   'GET /api/sounds': (req, res) => sendJson(res, 200, { files: listSounds(), settings: readSoundSettings() }),
   'POST /api/sounds/settings': async (req, res) => {
